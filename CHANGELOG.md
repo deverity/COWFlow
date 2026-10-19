@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Platform doctor probes: Dev Drive detection in `Host.Volume` and ProjFS
+  availability (`Host.ProjFSAvailable`), both working without administrator
+  rights.
 - Product scope specification (`docs/SCOPE.md`).
 - Git workflow and governance (`docs/GITFLOW.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`).
 - Go module `github.com/deverity/cowflow` with a minimal `cowflow` CLI.

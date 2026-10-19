@@ -37,10 +37,19 @@ func (h *host) Volume(ctx context.Context, path string) (VolumeInfo, error) {
 		&fsName[0], bufLen); err != nil {
 		return VolumeInfo{}, fmt.Errorf("volume information: %w", err)
 	}
-	return VolumeInfo{
+	vi := VolumeInfo{
 		Path:       windows.UTF16ToString(root),
 		Filesystem: windows.UTF16ToString(fsName), // "ReFS", "NTFS", ...
 		BlockClone: flags&fileSupportsBlockRefcounting != 0,
-		DevDrive:   false, // PENDING S0-T19: Dev Drive detection
-	}, nil
+	}
+	// A Dev Drive is always ReFS; a ReFS volume is not necessarily a Dev
+	// Drive, so the two facts are reported separately.
+	if vi.Filesystem == "ReFS" {
+		dev, err := isDevDrive(vi.Path)
+		if err != nil {
+			return VolumeInfo{}, fmt.Errorf("dev drive state of %q: %w", vi.Path, err)
+		}
+		vi.DevDrive = dev
+	}
+	return vi, nil
 }

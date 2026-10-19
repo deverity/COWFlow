@@ -67,18 +67,12 @@ type AutoAttacher interface {
 	Disable(ctx context.Context, vhdxPath string) error
 }
 
-// host is the real Host. OS and Volume are implemented per OS in
-// osinfo_*.go and fscaps_*.go.
+// host is the real Host. OS, Volume and ProjFSAvailable are implemented per
+// OS in osinfo_*.go, fscaps_*.go and projfs_probe_*.go.
 type host struct{}
 
 // NewHost returns the Host backed by the real operating system.
 func NewHost() Host { return &host{} }
-
-// ProjFSAvailable reports whether ProjFS can be used.
-// PENDING S0-T19: the probe lands with the doctor platform checks.
-func (h *host) ProjFSAvailable(context.Context) (bool, error) {
-	return false, ErrUnsupported
-}
 
 // devDrive is the real DevDrive; it is implemented by S0-T15/S0-T16.
 type devDrive struct{ host Host }
