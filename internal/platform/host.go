@@ -103,10 +103,3 @@ func (d *devDrive) Detach(context.Context, string) error { return ErrUnsupported
 func (d *devDrive) Status(context.Context, DevDriveSpec) (DevDriveStatus, error) {
 	return DevDriveStatus{}, ErrUnsupported
 }
-
-// OS and Volume are placeholders until the per-OS implementations land.
-func (h *host) OS(context.Context) (OSInfo, error) { return OSInfo{}, ErrUnsupported }
-
-func (h *host) Volume(context.Context, string) (VolumeInfo, error) {
-	return VolumeInfo{}, ErrUnsupported
-}
