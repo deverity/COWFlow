@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to stderr, as a JSON document in `--json` mode.
 - Full SCOPE.md §14 command tree with its arguments and flags; commands
   are stubs that report "not implemented yet" until later sprints.
+- Process-tree control in `internal/platform`: commands start inside a
+  Windows Job Object (`KILL_ON_JOB_CLOSE`, created suspended) or a Unix
+  process group, and cancellation stops the whole tree (polite stop, grace
+  period, then kill).
 - CI: lint, tests on Windows/Linux/macOS, `govulncheck`, `gitleaks`, DCO check.
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
