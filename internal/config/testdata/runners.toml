@@ -1,0 +1,37 @@
+[runner.claude-code]
+provider        = "anthropic"
+cmd             = ["claude", "-p"]
+mcp_config_flag = ["--mcp-config", "{mcp_config}"]
+permission_flag = ["--dangerously-skip-permissions"]
+context_file    = "CLAUDE.md"
+prompt_mode     = "arg"            # arg | stdin | file
+
+[runner.codex]
+provider        = "openai"
+cmd             = ["codex", "exec"]
+mcp_config_flag = ["--config", "mcp_servers.cowflow.command=cowflow"]
+permission_flag = ["--full-auto"]
+context_file    = "AGENTS.md"
+prompt_mode     = "arg"
+
+[runner.aider]
+provider        = "openai"
+cmd             = ["aider", "--yes"]
+mcp_config_flag = []               # uses cowflow --json via shell
+permission_flag = []
+context_file    = "CONVENTIONS.md"
+prompt_mode     = "message"
+
+[runner.gemini]
+provider        = "google"
+cmd             = ["gemini", "-p"]
+mcp_config_flag = []               # reads generated .gemini/settings.json
+permission_flag = ["--yolo"]
+context_file    = "GEMINI.md"
+prompt_mode     = "arg"
+
+[runner.generic]
+provider        = "custom"
+cmd             = ["{cmd}"]
+context_file    = "AGENTS.md"
+prompt_mode     = "stdin"
