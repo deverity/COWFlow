@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test harness (`test/harness`): `FakeHost` and `SimDevDrive`, a deterministic
   simulated VHDX Dev Drive that can fail at any provisioning step and drops
   its volume on detach or reboot.
+- Hermetic test harness (`test/harness`): a fake clock, throw-away Git
+  repositories isolated from the developer's Git config, and Git
+  fault injection (exit code, timeout, truncated output).
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
 - `config.example.toml` at the repository root (tested to always load and
   validate), and `config.Save`, an atomic rewrite that keeps the previous
