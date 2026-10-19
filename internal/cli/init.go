@@ -46,12 +46,9 @@ func newInitCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 				deps:   deps,
 				st:     st,
 				layout: devdriveLayout,
-				// PENDING SPEC-GAPS U-PLAT-5 (S0-T17): develop has the
-				// platform.AutoAttacher interface but no implementation
-				// yet, so there is nothing to call; init reports that
-				// auto-attach is not configured. Wire
-				// platform.NewAutoAttacher() here once it lands.
-				attacher: nil,
+				// PENDING SPEC-GAPS U-PLAT-5: Enable reports
+				// ErrAutoAttachUndecided until the mechanism is decided.
+				attacher: platform.NewAutoAttacher(),
 			}
 			return in.run(cmd.Context(), o)
 		},
@@ -79,7 +76,7 @@ type devDriveInit struct {
 	deps     Deps
 	st       *runState
 	layout   func(mount string) map[string]string
-	attacher platform.AutoAttacher // nil: auto-attach not available (U-PLAT-5)
+	attacher platform.AutoAttacher // nil: auto-attach not available
 }
 
 // initDevDriveResult is the --json output of `init --devdrive`.
@@ -150,18 +147,14 @@ func (in devDriveInit) run(ctx context.Context, o initDevDriveOpts) error {
 		if err != nil {
 			return devDriveErr(fmt.Errorf("devdrive status: %w", err))
 		}
-		// PENDING SPEC-GAPS U-PLAT-5: while no AutoAttacher exists the
+		// PENDING SPEC-GAPS U-PLAT-5: while the mechanism is undecided the
 		// child's auto-attach outcome is always "not configured", so the
-		// parent can report it. Once one lands, the parent must learn the
-		// real outcome (e.g. from config auto_attach) instead.
-		return in.print(status, cfgPath, in.warnings(spec, errAutoAttachUnavailable))
+		// parent can report it. Once it is decided, the parent must learn
+		// the real outcome (e.g. from config auto_attach) instead.
+		return in.print(status, cfgPath, in.warnings(spec, platform.ErrAutoAttachUndecided))
 	}
 	return in.provision(ctx, spec, cfgPath)
 }
-
-// errAutoAttachUnavailable stands in for S0-T17's ErrAutoAttachUndecided
-// while no AutoAttacher implementation is on develop (U-PLAT-5).
-var errAutoAttachUnavailable = errors.New("auto-attach is pending SPEC-GAPS U-PLAT-5")
 
 // provision runs steps 4-7 in an elevated process.
 func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec, cfgPath string) error {
@@ -199,7 +192,7 @@ func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec
 
 	// Step 5: auto-attach at boot (mechanism PENDING U-PLAT-5) and
 	// registration in [devdrive].
-	aaErr := errAutoAttachUnavailable
+	aaErr := platform.ErrAutoAttachUndecided
 	if in.attacher != nil {
 		aaErr = in.attacher.Enable(ctx, spec)
 	}
@@ -224,7 +217,7 @@ func (in devDriveInit) warnings(spec platform.DevDriveSpec, autoAttach error) []
 	var w []string
 	if autoAttach != nil {
 		w = append(w, autoAttachWarning)
-		if !errors.Is(autoAttach, errAutoAttachUnavailable) {
+		if !errors.Is(autoAttach, platform.ErrAutoAttachUndecided) {
 			w = append(w, "auto-attach: "+autoAttach.Error())
 		}
 	}
