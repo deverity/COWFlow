@@ -43,6 +43,9 @@ Always. Any task that ends in a commit, branch, PR, tag, or release.
   - summary ≤ 72 chars, imperative, lowercase start, no trailing period
   - body explains *why*; breaking change → `!` and `BREAKING CHANGE:` footer
 - MUST sign and sign off: `git commit -S -s`.
+- MUST tag sprint-task commits with trailers (AGENTS.md §8):
+  `--trailer "Task: S<n>-T<nn>"` on every commit of the task, plus
+  `--trailer "Task-Status: done"` on the commit that completes it.
 - NEVER add `Co-Authored-By:` trailers or "Generated with …" lines (AI/tool
   attribution) to commits or PRs.
 - MUST keep commits atomic: each builds and passes `go test ./...`.

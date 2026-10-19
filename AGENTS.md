@@ -106,7 +106,29 @@ a `SKILL.md`. Read the index, then load every skill whose area your change
 touches. Always load `gitflow` and `go-conventions`; load `security-review`
 for anything touching tokens, paths, processes, git invocation, or the API.
 
-## 8. Definition of done (for changes to this repo)
+## 8. Task tracking
+
+Progress is derived from git history — there is no status file to edit.
+
+- Every commit that implements a sprint task carries a **`Task:` trailer**
+  with the task ID (next to the `Signed-off-by:` trailer):
+  `git commit -s --trailer "Task: S0-T03" -m "feat(store): ..."`.
+  A commit that finishes the task also carries `Task-Status: done`.
+- **Done** = a commit on `develop` with `Task: <id>` and `Task-Status: done`.
+  List them with:
+  ```bash
+  git log origin/develop --format='%(trailers:key=Task,valueonly,separator=%x20)|%(trailers:key=Task-Status,valueonly)' | grep '|done' | cut -d'|' -f1 | sort -u
+  ```
+- **In progress** = a remote branch exists with the task's branch name (as
+  given in its sprint document): `git ls-remote --heads origin`.
+- **Next task** = in the lowest sprint with unfinished tasks, the first task
+  in the sprint's lane order (§5 of the sprint document) whose `Depends on`
+  tasks are all done, which is not in progress, and which is not blocked by an
+  undecided SPEC-GAPS item. If every remaining task is blocked, stop and list
+  the blocking gap IDs for the maintainer.
+- One task per branch; one task per working session unless told otherwise.
+
+## 9. Definition of done (for changes to this repo)
 
 - [ ] Change matches SCOPE.md; no unrequested features.
 - [ ] Relevant skills loaded and their checklists satisfied.
@@ -115,3 +137,4 @@ for anything touching tokens, paths, processes, git invocation, or the API.
 - [ ] `golangci-lint run` and `go vet ./...` clean; `go mod tidy` is a no-op.
 - [ ] Docs and `CHANGELOG.md` (`[Unreleased]`) updated if user-visible.
 - [ ] Commits are Conventional, signed, and signed off; branch targets `develop`.
+- [ ] Sprint task commits carry `Task: <id>`; the final one also `Task-Status: done`.
