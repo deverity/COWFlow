@@ -1,7 +1,3 @@
-// Package platform is COWFlow's OS adapter: path canonicalization and
-// confinement, process trees, volumes and Dev Drive provisioning (SCOPE.md
-// §5.1 Platform Layer, §7). Windows is the primary platform; every exported
-// function compiles on Windows, Linux and macOS.
 package platform
 
 import (

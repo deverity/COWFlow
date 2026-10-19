@@ -1,6 +1,3 @@
-// Package platform hides OS-specific behavior (volumes, Dev Drive, paths,
-// process trees) behind small interfaces so the rest of COWFlow and the
-// hermetic test harness never touch the OS directly.
 package platform
 
 import (
