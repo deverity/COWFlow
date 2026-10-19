@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gap-checked migration runner that is safe with concurrent openers.
 - Base schema migration `0001_base.sql` (`projects` table), the `WithTx`
   immediate-transaction helper and project insert/lookup in `internal/store`.
+- Configuration defaults and validation (`internal/config`): `Default()` sets
+  only the spec-stated defaults, `Load` applies them before decoding and
+  validates afterwards, and `Validate` reports every problem at once
+  (including rejecting a non-loopback `daemon.bind`).
 - CI: lint, tests on Windows/Linux/macOS, `govulncheck`, `gitleaks`, DCO check.
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
 - `internal/platform`: `Host`/`DevDrive` contracts, OS info and filesystem

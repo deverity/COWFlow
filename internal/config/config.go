@@ -206,13 +206,6 @@ type Security struct {
 	BlockedPatterns []string `toml:"blocked_patterns"` // PENDING C12: relationship with the §24.13 never-commit list
 }
 
-// Default returns a configuration holding the spec-stated defaults only
-// (§22, §6.3, §9.4, §23).
-func Default() *Config { return &Config{} }
-
-// Validate reports every problem found in c, joined with errors.Join.
-func (*Config) Validate() error { return errNotImplemented }
-
 // Save writes c to path atomically (temporary file plus rename).
 func Save(_ string, _ *Config) error { return errNotImplemented }
 
