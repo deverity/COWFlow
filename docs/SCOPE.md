@@ -118,7 +118,7 @@ When a customer needs Scion-style storage, it plugs in as an alternative `GitPro
 - Invisible automatic sync.
 - VM isolation when the provider is not container.
 - Provisioning of databases/services per task (only `port_range` and env).
-- Web dashboard (v1: `status --watch` + `/v1/status` JSON).
+- Web dashboard in v1 (v1: `status --watch` + `/v1/status` JSON). A read-only, embedded web dashboard is planned **post-v1** — see [docs/sprints/sprint-7.md](sprints/sprint-7.md).
 - Multi-machine hub (prepared, not implemented).
 - Edit locks.
 
@@ -1217,6 +1217,7 @@ blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]
 10. **ProjFS in v1 as an experimental provider, never auto.**
 11. Per-file manifest in the change; derived index in SQLite.
 12. Diff-only gates before workspace.
+13. Web dashboard is post-v1 (Sprint 7): read-only, plain HTML + JavaScript embedded in the binary via `go:embed`, served by the daemon on loopback, live updates over the existing SSE stream. No Node toolchain.
 
 ### Open questions
 

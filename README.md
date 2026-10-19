@@ -82,6 +82,7 @@ go install github.com/deverity/cowflow/cmd/cowflow@latest
 | Document | Contents |
 |---|---|
 | [docs/SCOPE.md](docs/SCOPE.md) | Product specification for v1 |
+| [docs/sprints/](docs/sprints/README.md) | Sprint plan (one sprint per phase), agent roster, tasks |
 | [docs/GITFLOW.md](docs/GITFLOW.md) | Branching model, releases, and repository rules |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [AGENTS.md](AGENTS.md) | Rules for AI agents working on this repo; skills in [docs/skill/](docs/skill/README.md) |

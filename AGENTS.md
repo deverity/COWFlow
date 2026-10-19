@@ -11,6 +11,7 @@ working **on the COWFlow repository itself**. Humans: see
 | What to build | [docs/SCOPE.md](docs/SCOPE.md) | The spec wins. Do not add features, providers, or config keys it does not list. |
 | How code moves | [docs/GITFLOW.md](docs/GITFLOW.md) | Mandatory for every change. |
 | How to do X | [docs/skill/](docs/skill/README.md) | Load the matching skill **before** writing code in its area. |
+| What to do now | [docs/sprints/](docs/sprints/README.md) | Take tasks from the current sprint document; respect the agent roster and package ownership. |
 
 If the spec is ambiguous, listed under §23 "Open questions", or listed in
 [docs/SPEC-GAPS.md](docs/SPEC-GAPS.md), **stop and ask** the maintainer.
@@ -78,6 +79,13 @@ Windows, Linux, and macOS (`.github/workflows/ci.yml`).
   behind a shared interface; Windows is the primary platform, not an afterthought.
 
 ## 6. Implementation phases (SCOPE.md §19)
+
+Each phase is one sprint, detailed task by task in
+[docs/sprints/](docs/sprints/README.md). The sprint README also defines the
+**agent roster** (`AG-LEAD`, `AG-CLI`, `AG-API`, `AG-MCP`, `AG-WEB`, `AG-STORE`,
+`AG-GIT`, `AG-PLAT`, `AG-WS`, `AG-COLLAB`, `AG-SCHED`, `AG-INT`, `AG-QA`,
+`AG-SEC`): when you are assigned a role, change only the packages that role
+owns and ask the owner for anything else.
 
 Work lands in phase order unless the maintainer says otherwise:
 
