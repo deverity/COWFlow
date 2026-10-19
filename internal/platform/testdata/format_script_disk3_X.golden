@@ -1,0 +1,13 @@
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$n = [int]'3'
+$mount = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('WDo='))
+Initialize-Disk -Number $n -PartitionStyle GPT
+if ($mount -match '^[D-Z]:$') {
+  $p = New-Partition -DiskNumber $n -UseMaximumSize -DriveLetter $mount[0]
+  Format-Volume -DriveLetter $mount[0] -DevDrive -Confirm:$false | Out-Null
+} else {
+  $p = New-Partition -DiskNumber $n -UseMaximumSize
+  Format-Volume -Partition $p -DevDrive -Confirm:$false | Out-Null
+  Add-PartitionAccessPath -DiskNumber $n -PartitionNumber $p.PartitionNumber -AccessPath $mount
+}

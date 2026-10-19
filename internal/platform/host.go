@@ -74,23 +74,7 @@ type host struct{}
 // NewHost returns the Host backed by the real operating system.
 func NewHost() Host { return &host{} }
 
-// devDrive is the real DevDrive; it is implemented by S0-T15/S0-T16.
-type devDrive struct{ host Host }
-
-// NewDevDrive returns a DevDrive whose operations report ErrUnsupported
-// until S0-T16 provides the Windows implementation.
-func NewDevDrive(h Host) DevDrive { return &devDrive{host: h} }
-
-func (d *devDrive) Provision(context.Context, DevDriveSpec) (DevDriveStatus, error) {
-	return DevDriveStatus{}, ErrUnsupported
-}
-
-func (d *devDrive) Attach(context.Context, DevDriveSpec) (DevDriveStatus, error) {
-	return DevDriveStatus{}, ErrUnsupported
-}
-
-func (d *devDrive) Detach(context.Context, string) error { return ErrUnsupported }
-
-func (d *devDrive) Status(context.Context, DevDriveSpec) (DevDriveStatus, error) {
-	return DevDriveStatus{}, ErrUnsupported
-}
+// NewDevDrive returns the DevDrive backed by the real operating system
+// (devdrive.go, devdrive_windows.go). On every OS but Windows its
+// operations report ErrUnsupported.
+func NewDevDrive(h Host) DevDrive { return newDevDrive(h) }

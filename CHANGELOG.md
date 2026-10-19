@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Platform doctor probes: Dev Drive detection in `Host.Volume` and ProjFS
   availability (`Host.ProjFSAvailable`), both working without administrator
   rights.
+- Dev Drive provisioning on Windows (`platform.NewDevDrive`): creates a
+  dynamic VHDX through `virtdisk.dll` (PowerShell `New-VHD` fallback),
+  attaches it, partitions and formats it as an ReFS Dev Drive at a drive
+  letter, and reports success only once the volume is confirmed ReFS. A
+  failed provisioning detaches the disk and deletes the VHDX it created.
+  `Attach`, `Detach` and `Status` manage an existing Dev Drive.
 - Product scope specification (`docs/SCOPE.md`).
 - Git workflow and governance (`docs/GITFLOW.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`).
 - Go module `github.com/deverity/cowflow` with a minimal `cowflow` CLI.
