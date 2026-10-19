@@ -62,6 +62,12 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		_ = db.Close() // the ping error is the one that matters
 		return nil, fmt.Errorf("store: ping %s: %w", path, err)
 	}
+	if opt.Clock == nil {
+		opt.Clock = domain.SystemClock{}
+	}
+	if opt.IDs == nil {
+		opt.IDs = domain.NewULIDGen(opt.Clock)
+	}
 	s := &Store{db: db, clock: opt.Clock, ids: opt.IDs}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close() // the migration error is the one that matters

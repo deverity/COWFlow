@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite store (`internal/store`): WAL, busy timeout, foreign keys and
   immediate transactions on every pooled connection, plus an embedded,
   gap-checked migration runner that is safe with concurrent openers.
+- Base schema migration `0001_base.sql` (`projects` table), the `WithTx`
+  immediate-transaction helper and project insert/lookup in `internal/store`.
 - CI: lint, tests on Windows/Linux/macOS, `govulncheck`, `gitleaks`, DCO check.
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
