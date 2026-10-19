@@ -2,8 +2,6 @@
   <img src="logo.png" alt="COWFlow" width="280">
 </p>
 
-<h1 align="center">COWFlow</h1>
-
 <p align="center">
   <strong>Isolated execution, shared intelligence, coordinated integration.</strong><br>
   A local runtime for teams of AI agents working in parallel on the same Git repository.
