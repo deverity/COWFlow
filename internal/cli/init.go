@@ -200,7 +200,7 @@ func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec
 		Enabled:    true,
 		Path:       spec.VHDXPath,
 		Mount:      spec.Mount,
-		SizeGB:     int(spec.SizeBytes >> 30), //nolint:gosec // G115: bounded by parseSize (< 2^34 GiB)
+		SizeGB:     int(spec.SizeBytes >> 30),
 		AutoAttach: aaErr == nil,
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {

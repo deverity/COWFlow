@@ -125,7 +125,7 @@ func backup(path string) error {
 	if err != nil {
 		return fmt.Errorf("config: save %s: read previous: %w", path, err)
 	}
-	if err := os.WriteFile(path+".bak", data, 0o600); err != nil {
+	if err := os.WriteFile(path+".bak", data, 0o600); err != nil { //nolint:gosec // G703: the config path is chosen by the operator, as in G304 above
 		return fmt.Errorf("config: save %s: write backup: %w", path, err)
 	}
 	return nil
