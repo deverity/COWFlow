@@ -1,7 +1,7 @@
 # COWFlow — Scope v1 (functional product)
 
 > **Status:** product specification, version 1.2  
-> **Language:** Go (1.23+)  
+> **Language:** Go (1.26+)  
 > **Primary platform:** Windows 11 (Dev Drive / VHDX ReFS)  
 > **Supported platforms:** Windows, Linux, macOS  
 > **Target load:** 20 concurrent agent sessions on one machine  
@@ -853,7 +853,7 @@ The runner injects the protocol into the vendor's `context_file`; the API refuse
 
 | Area | Choice |
 |---|---|
-| Go | 1.23+, `CGO_ENABLED=0` |
+| Go | 1.26+, `CGO_ENABLED=0` |
 | CLI | cobra |
 | HTTP | `net/http`, manual SSE |
 | SQLite | `modernc.org/sqlite` |
@@ -1205,7 +1205,7 @@ blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]
 
 ### Settled decisions
 
-1. Go 1.23+, `CGO_ENABLED=0`.
+1. Go 1.26+, `CGO_ENABLED=0`. `go.mod` declares `go 1.26.0` and pins the build toolchain with a `toolchain` line kept on the latest 1.26 patch release (SPEC-GAPS C1, resolved: Go 1.25.0 failed `govulncheck` on a standard-library vulnerability, and current `golang.org/x/sys` and `govulncheck` need 1.26).
 2. `modernc.org/sqlite`.
 3. `net/http`, SSE, daemonless polling.
 4. TOML.

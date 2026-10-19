@@ -125,4 +125,4 @@ Steps:
 - [ ] Per-provider limits and budgets honored; `budget.exceeded` emitted.
 - [ ] MCP SDK isolated behind the adapter; SDK choice left open (§23 #1).
 - [ ] Works daemonless and with daemon.
-- [ ] Tests above pass with `go test -race ./...` on Windows, Linux, macOS; `CGO_ENABLED=0` build (Go 1.25 per go.mod; spec §16 says 1.23+).
+- [ ] Tests above pass with `go test -race ./...` on Windows, Linux, macOS; `CGO_ENABLED=0` build (Go 1.26+ per go.mod and SCOPE.md §16).

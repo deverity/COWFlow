@@ -85,6 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Go 1.26 is now required (`go 1.26.0`, built with the `go1.26.9`
+  toolchain); Go 1.25.0 had a standard-library vulnerability reported by
+  govulncheck. `golang.org/x/sys` is updated to v0.49.0.
 - CI now runs on push and pull requests to `master` and `develop`: lint with a
   six-target cross-build, tests on Linux, Windows and macOS, govulncheck,
   gitleaks and DCO.

@@ -478,7 +478,7 @@ reconcile runs before any component (order recorded by fakes).
 **Acceptance**
 - [ ] Start order: volume → lock → store → reconcile → components.
 - [ ] Every goroutine has an owner and exits on cancel; `-race` clean.
-- [ ] No `golang.org/x/sync` (use `sync.WaitGroup.Go`, Go 1.25).
+- [ ] No `golang.org/x/sync` (use `sync.WaitGroup.Go`, Go 1.25+).
 
 **Pitfalls** — Default `state_dir = "X:/state"` lives on the Dev Drive: if the
 VHDX is not attached the store cannot open, so attach must come first. Do not

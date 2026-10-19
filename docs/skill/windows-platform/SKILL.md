@@ -74,7 +74,7 @@ Guidance — seams the harness needs (§18.1 "simulated VHDX (interface)", "simu
 - ProjFS daemon hang freezes agent I/O; every callback needs a bounded deadline.
 - Format/partition via PowerShell: check exit codes and parse nothing locale-dependent.
 - Line endings: `core.autocrlf=true` from the user's global config breaks clone/hash equality; set `false` per worktree.
-- Spec header says Go 1.23+; repo `go.mod` targets Go 1.25 — use APIs available in the `go.mod` version.
+- Go 1.26+ (SCOPE.md §23 decision 1) — use APIs available in the `go.mod` version.
 
 ## Tests required
 - Unit (all OSes): path canonicalization/confinement (`..`, symlink escape, case, UNC, > 240 chars); `\\?\` prefixing; argv construction (no shell strings); struct sizes/offsets for `DUPLICATE_EXTENTS_DATA`, virtdisk and ProjFS structs (`unsafe.Sizeof`/`Offsetof` vs documented values on amd64/arm64).

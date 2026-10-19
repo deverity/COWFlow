@@ -71,7 +71,7 @@ the SQLite store from `S0-E3`/`S2-E1`, plus whatever process hosts the runners
 
 | Item | Who | Notes |
 |---|---|---|
-| Go 1.25, `git >= 2.40`, `golangci-lint` v2 | everyone | as in Sprint 0 |
+| Go 1.26, `git >= 2.40`, `golangci-lint` v2 | everyone | as in Sprint 0 |
 | Node.js LTS (for vendor CLIs) | `AG-MCP`, `AG-QA`, `AG-LEAD` | Claude Code and Codex CLI are distributed via npm |
 | Claude Code CLI + VS Code extension | `AG-MCP`, `AG-QA`, `AG-LEAD` | `npm install -g @anthropic-ai/claude-code`; extension "Claude Code" from the VS Code Marketplace. Docs: <https://docs.anthropic.com/en/docs/claude-code> |
 | Codex CLI | `AG-MCP`, `AG-QA`, `AG-LEAD` | `npm install -g @openai/codex`. Docs: <https://github.com/openai/codex> |
@@ -100,7 +100,7 @@ sprint.
 | Ref | Gap (source) | Blocks | While blocked |
 |---|---|---|---|
 | SCOPE.md §23 Open question 1 | Final MCP SDK (official Go SDK vs `mark3labs/mcp-go`) | `S3-T01` concrete adapter (critical path) | Everything else codes against `ToolServer` + in-memory fake |
-| `C1` | Go 1.23+ in spec vs 1.25 in `go.mod` | nothing (use `go.mod`) | — |
+| ~~`C1`~~ | Resolved: Go 1.26+ (SCOPE.md §23 decision 1) | nothing (use `go.mod`) | — |
 | `C2` | Task branch `cowflow/<project>/<task-slug>` vs `<kind>/<slug>` under gitflow | `S3-T11` (which namer applies outside the gitflow preset) | Implement both behind `BranchNamer`; selection waits |
 | `C3` | `promotion_mode` `manual\|auto` vs also `pr` | `S3-T11` (`init --conventions gitflow` must not write `pr`); `S3-T04` `cowflow_promote` accepts only `manual` behavior | Validate only `manual\|auto`; `pr` returns a validation error naming `C3` |
 | `C8` | Contract edit needs *open* vs *accepted* `confirm_contract` | `S3-T20` foreign-contract boundary rule | Rule implemented with the predicate injected; merge waits |
@@ -992,7 +992,7 @@ argv element** or stdin/file content.
    ```
    `subst` replaces `{mcp_config}`, `{workspace}`, `{prompt}`, `{task_id}` (and `{cmd}` for generic) **inside each element**; never joins, never splits on spaces.
 3. Reject a placeholder in `cmd[0]` other than `{cmd}`; unknown `{…}` placeholder → error.
-4. Resolve `cmd[0]` with `exec.LookPath`; on Windows let Go resolve `.exe`/`.cmd` shims (npm installs `claude.cmd`/`codex.cmd`). Guidance: `.cmd` shims are run by `cmd.exe` internally — Go ≥ 1.22 escapes arguments for batch files and refuses unsafe ones; keep Go ≥ 1.25 and add a test with a prompt containing `&|^%"`.
+4. Resolve `cmd[0]` with `exec.LookPath`; on Windows let Go resolve `.exe`/`.cmd` shims (npm installs `claude.cmd`/`codex.cmd`). Guidance: `.cmd` shims are run by `cmd.exe` internally — Go ≥ 1.22 escapes arguments for batch files and refuses unsafe ones; keep Go ≥ 1.26 and add a test with a prompt containing `&|^%"`.
 
 **Tests** — table for every `[runner.*]` in §15.3/§22 × each `prompt_mode`;
 prompt with spaces, quotes, newlines, `$(…)`, `%PATH%`, `&& del` stays one

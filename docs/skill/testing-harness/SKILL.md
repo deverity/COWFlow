@@ -21,7 +21,7 @@ SCOPE.md wins on any conflict.
 
 ## Rules
 - Tests use `testing` + testify and MUST pass under `-race` (§16).
-- Build with `CGO_ENABLED=0` (§16, §23 decision 1). Go version per `go.mod` (1.25.0); spec §16 states "1.23+".
+- Build with `CGO_ENABLED=0` (§16, §23 decision 1). Go version per `go.mod` (1.26+, SCOPE.md §16).
 - Core and tests MUST run on Windows, Linux and macOS in CI; platform limitations documented in `docs/windows.md` and `docs/projfs.md` (§3.1, §19 Phase 0, §20 #14).
 - `test/harness` MUST provide (§18.1): fake clock; Git repository on tmpfs; fault injection into the Git subprocess (exit code, timeout, truncated output); simulated disk full; daemon crash between outbox write and delivery; simulated VHDX (interface); simulated ProjFS (in-memory callbacks).
 - Every row of the §18 failure table MUST have an automated harness test (§18.1, §20 #26):

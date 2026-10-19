@@ -45,9 +45,9 @@ Phase 0 output (§19) plus the §20 criteria that [README §3](README.md#3-accep
 Run in **PowerShell**. Commands that need admin are marked.
 
 ```powershell
-# Go (version must satisfy go.mod: go 1.25.0)
+# Go (version must satisfy go.mod: go 1.26.0; the toolchain line selects the patch)
 winget install -e --id GoLang.Go
-go version                       # expect: go version go1.25.x windows/amd64
+go version                       # expect: go version go1.26.x windows/amd64
 
 # Git >= 2.40 (the only runtime dependency of cowflow, §3.1)
 winget install -e --id Git.Git
@@ -62,7 +62,7 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 golangci-lint version            # expect: golangci-lint has version v2.15.0 ...
 
 # govulncheck — same version as CI
-go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+go install golang.org/x/vuln/cmd/govulncheck@v1.9.0   # needs Go 1.26
 
 # C toolchain: ONLY for `go test -race` (the race detector needs cgo on Windows).
 # The cowflow binary itself is always built with CGO_ENABLED=0.
@@ -101,7 +101,7 @@ None. Sprint 0 starts from the bootstrap repository (`go.mod` with `module githu
 
 | Gap | What is undecided | Tasks affected | What is blocked until decided |
 |---|---|---|---|
-| `C1` | Go 1.23+ (spec) vs `go 1.25.0` (`go.mod`) | S0-T01, S0-T23 | Nothing is blocked; keep `go.mod` unchanged and use only APIs available in its version. Do not edit the `go` line. |
+| ~~`C1`~~ | Resolved: Go 1.26+ (`go 1.26.0` plus a `toolchain` line), SCOPE.md §23 decision 1 | S0-T01, S0-T23 | Nothing. |
 | `C3` | `promotion_mode` values `manual\|auto` vs also `pr` | S0-T04 | The enum check for `integration.promotion_mode`. |
 | `C4` | Sync strategy `squash-merge` vs `--strategy squash` | S0-T02, S0-T04 | Accepted values for `git.default_sync_strategy` and the help text of `sync --strategy`. |
 | `C5` | `max_concurrent_per_target` vs `max_integrations_per_target` | S0-T03 | Which key name(s) the schema accepts. |

@@ -78,7 +78,7 @@ Developers on Linux/macOS still build and test everything: the ProjFS code compi
 |---|---|---|
 | **SCOPE.md §23 Open question 5** — ProjFS: enumerate outside the scope as *empty* vs *lazy* | SCOPE.md §23 | S6-T12 implements both behind `ScopePolicy`; S6-T16 produces the benchmark. The *choice* stays with the maintainer. |
 | **SCOPE.md §23 Open question 6** — golden tree per `base_sha` vs per branch | SCOPE.md §23 | Not blocking. `projfs` uses no golden tree; its tree index is keyed by `base_sha` because §17 requires the authorized `base_sha`. S6-T06 must not change golden keying. |
-| **C1** — Go 1.23+ in spec vs 1.25 in `go.mod` | SPEC-GAPS | None (use `go.mod`). Fuzzing APIs exist in both. |
+| ~~**C1**~~ — resolved: Go 1.26+ (SCOPE.md §23 decision 1) | SCOPE | None (use `go.mod`). |
 | **C7** — golden tree location | SPEC-GAPS | Not blocking (no golden for `projfs`); `docs/windows.md` (S6-T30) must not state a location as settled. |
 | **C12** — §24.13 never-commit list vs `blocked_patterns` | SPEC-GAPS | S6-T28 reports both lists as-is; does not merge them. |
 | **C14** — Defender exclusion "suggest" vs required | SPEC-GAPS | S6-T30 documents the *suggestion* only (§6.4); no code changes Defender. |
@@ -177,7 +177,7 @@ AG-SEC      ·   ·  T28 ──────────── rolling review ─
 
 ## 6. Contracts
 
-Frozen on day 1 by S6-T01. Consumers code against these and use the fakes until the real implementation lands. Signatures are illustrative Go 1.25; names in backticks from SCOPE.md are fixed, other names are Guidance agreed here.
+Frozen on day 1 by S6-T01. Consumers code against these and use the fakes until the real implementation lands. Signatures are illustrative Go 1.26; names in backticks from SCOPE.md are fixed, other names are Guidance agreed here.
 
 ### 6.1 ProjFS host ↔ projection (`AG-PLAT` → `AG-WS`)
 

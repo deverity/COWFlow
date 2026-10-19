@@ -17,7 +17,7 @@ their group; resolved items are struck through, never renumbered.
 
 | # | Topic | Conflict | Sections |
 |---|---|---|---|
-| C1 | Go version | Spec says Go 1.23+; `go.mod` targets 1.25 (1.23 is out of security support). | header, §16, §23 |
+| ~~C1~~ | ~~Go version~~ | Resolved: Go 1.26+ (SCOPE.md §23 settled decision 1). | header, §16, §23 |
 | C2 | Task branch naming | `cowflow/<project>/<task-slug>` vs `<kind>/<slug>` under the gitflow preset. | §8.1, §24.2 |
 | C3 | `promotion_mode` values | `manual\|auto` vs also `pr`; remote/forge config for `pr` undefined. | §10.3, §22, §24.2 |
 | C4 | Sync strategy name | `squash-merge` vs CLI `--strategy squash`. | §8.4, §14 |

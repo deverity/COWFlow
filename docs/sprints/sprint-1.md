@@ -61,7 +61,7 @@ On day 1, `AG-LEAD` confirms that each of these epics is merged into `develop`. 
 | `AG-PLAT`, `AG-WS`, `AG-QA` | Windows 11 22H2+ (build ≥ 22621), local admin, ≥ 80 GB free for a 60 GB Dev Drive, plus a plain NTFS folder | block clone, `pending_mount`, AC 13 ReFS vs NTFS, AC 21 numbers |
 | `AG-PLAT`, `AG-QA` | Linux VM or host (e.g. Ubuntu 24.04) with `btrfs-progs`, `xfsprogs`, loop devices and `sudo`; the default ext4 for negative tests | `FICLONE` on btrfs and XFS; ext4 → `git_worktree` |
 | `AG-PLAT`, `AG-QA` | macOS 13+ on APFS (the default). Optional: a dedicated APFS volume (`diskutil apfs addVolume`) for clean disk measurements | `clonefile` |
-| everyone | `git >= 2.40`, Go 1.25 (from `go.mod`), `golangci-lint` v2, `govulncheck`; `CGO_ENABLED=0` | §3.1, §16 |
+| everyone | `git >= 2.40`, Go 1.26 (from `go.mod`), `golangci-lint` v2, `govulncheck`; `CGO_ENABLED=0` | §3.1, §16 |
 | `AG-QA` | CI: hosted `ubuntu-latest` and `macos-latest`; hosted `windows-latest` for functional ReFS tests; **Guidance:** a self-hosted Windows 11 runner (label `win11-devdrive`) for the official AC 21 numbers | hosted Windows Server images may not support the Dev Drive flag |
 | `AG-QA` | about 10 GB of scratch space for the benchmark repo (S1-T19) | §20.21 needs a ≥ 1 GB repo |
 
@@ -71,7 +71,7 @@ IDs are the stable ones from [SPEC-GAPS.md](../SPEC-GAPS.md). **Nothing below is
 
 | Ref | Gap | Blocks | How to keep working (not a decision) |
 |---|---|---|---|
-| `C1` | Go 1.23+ in spec vs 1.25 in `go.mod` | nothing | use the `go.mod` version |
+| ~~`C1`~~ | Resolved: Go 1.26+ (SCOPE.md §23 decision 1) | nothing | use the `go.mod` version |
 | `C2` | Task branch name: `cowflow/<project>/<task-slug>` vs `<kind>/<slug>` | S1-T02 (`domain.BranchNamer`), S1-T16 | all code receives a branch from `BranchNamer`; tests use a fake namer |
 | `C7` | Golden location: `<root>/golden/<sha>` vs `workspace.golden_root` | S1-T09 (`goldenDir`) | one function `goldenDir(cfg, sha)`; tests inject a temp root |
 | `C13` | `gradle_home` and `pip_cache` missing from the `[cache]` example | S1-T15 (two of six keys) | implement the four keys in §22 `[cache]`; the other two wait until `AG-CLI` can add the config keys |
@@ -1704,7 +1704,7 @@ Run on a clean Windows 11 22H2+ machine with admin rights, from the repo root, w
 ```powershell
 # 0. Build and check the toolchain
 git --version                       # >= 2.40
-go version                          # go1.25.x
+go version                          # go1.26.x
 $env:CGO_ENABLED = "0"
 go build -o C:\cf\bin\cowflow.exe ./cmd/cowflow
 $env:PATH = "C:\cf\bin;$env:PATH"

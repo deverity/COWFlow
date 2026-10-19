@@ -90,7 +90,7 @@ Day 1; blocked work proceeds behind the interfaces in §6.
 
 | Ref | SPEC-GAPS entry | What is blocked until decided |
 |---|---|---|
-| `C1` | Go version 1.23+ vs `go.mod` 1.25 | Nothing; code targets `go.mod` (1.25). |
+| ~~`C1`~~ | Resolved: Go 1.26+ (SCOPE.md §23 decision 1) | Nothing; code targets `go.mod` (1.26). |
 | `C2` | Task branch naming `cowflow/<project>/<task-slug>` vs `<kind>/<slug>` | Nothing blocked, but S5-T17 must detect hotfix/release by **task kind**, never by parsing branch names. |
 | `C3` | `promotion_mode` `manual\|auto` vs also `pr`; forge config undefined | S5-T16 `pr` path (only the seam ships). |
 | `C5` | `max_concurrent_per_target` vs `max_integrations_per_target` | S5-T11 (`integrate:<target>` resource), S5-T16 (what the per-target serializer limits: validations or only the ref). |
