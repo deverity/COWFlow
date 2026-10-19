@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `platform.AutoAttacher` seam with `NewAutoAttacher`: until the auto-attach
+  mechanism is decided (SPEC-GAPS U-PLAT-5), `Enable` returns
+  `ErrAutoAttachUndecided` on Windows and `ErrUnsupported` elsewhere.
 - Git version gate (`git >= 2.40`, typed `ErrVersionTooOld`) and a `ConfigGet`
   probe that distinguishes an unset key from a git failure (`internal/git`).
 - Platform doctor probes: Dev Drive detection in `Host.Volume` and ProjFS
