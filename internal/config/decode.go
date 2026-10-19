@@ -36,9 +36,8 @@ type raw struct {
 	Security      Security                  `toml:"security"`
 }
 
-// Load decodes the file at path and rejects unknown keys.
-//
-// TODO(S0-T04): apply defaults before decoding and Validate afterwards.
+// Load decodes the file at path over the spec-stated defaults, rejects
+// unknown keys, then validates the result.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // G304: the config path is chosen by the operator
 	if err != nil {
@@ -48,13 +47,38 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("config %s: %w", path, err)
+	}
 	return c, nil
 }
 
-// decode parses TOML text into a Config. Every key the schema does not know
+// newRaw pre-fills the on-disk shape with d so keys absent from the file keep
+// their defaults.
+func newRaw(d *Config) raw {
+	return raw{
+		Daemon:        d.Daemon,
+		Project:       d.Project,
+		DevDrive:      d.DevDrive,
+		Workspace:     d.Workspace,
+		Cache:         d.Cache,
+		Git:           d.Git,
+		Scheduler:     rawScheduler{Scheduler: d.Scheduler},
+		Collaboration: d.Collaboration,
+		Integration:   d.Integration,
+		Gates:         d.Gates,
+		Invariants:    d.Invariants,
+		Resources:     d.Resources,
+		Conventions:   d.Conventions,
+		Watchdog:      d.Watchdog,
+		Security:      d.Security,
+	}
+}
+
+// decode parses TOML text into a Config pre-filled with Default(). Every key the schema does not know
 // is reported, one error per key, with its dotted path.
 func decode(text string) (*Config, error) {
-	var r raw
+	r := newRaw(Default())
 	md, err := toml.Decode(text, &r)
 	if err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
