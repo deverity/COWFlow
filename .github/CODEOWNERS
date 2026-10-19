@@ -1,0 +1,9 @@
+# Default owners for everything in the repository.
+# Reviews from code owners are required by branch protection (docs/GITFLOW.md).
+*                       @deverity
+
+# Governance and release pipeline
+/.github/               @deverity
+/docs/GITFLOW.md        @deverity
+/SECURITY.md            @deverity
+/.goreleaser.yaml       @deverity

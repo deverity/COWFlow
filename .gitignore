@@ -1,0 +1,27 @@
+# Build output
+/dist/
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# COWFlow runtime state
+.cowflow/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
