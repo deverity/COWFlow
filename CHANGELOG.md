@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/platform`: `Host`/`DevDrive` contracts, OS info and filesystem
   capability detection (`ReFS`/`NTFS` block refcounting, btrfs, APFS).
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
+- `config.example.toml` at the repository root (tested to always load and
+  validate), and `config.Save`, an atomic rewrite that keeps the previous
+  file as `.bak`. `config.Locate` reports the undecided location instead of
+  guessing one.
 
 ### Changed
 

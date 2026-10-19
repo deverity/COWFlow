@@ -1,11 +1,5 @@
 package config
 
-import "errors"
-
-// errNotImplemented is returned by contract entry points whose behavior has
-// not landed yet.
-var errNotImplemented = errors.New("config: not implemented")
-
 // Config is the root of config.toml. Its fields mirror SCOPE.md §22.
 type Config struct {
 	Daemon        Daemon        `toml:"daemon"`
@@ -205,12 +199,3 @@ type Watchdog struct {
 type Security struct {
 	BlockedPatterns []string `toml:"blocked_patterns"` // PENDING C12: relationship with the §24.13 never-commit list
 }
-
-// Save writes c to path atomically (temporary file plus rename).
-func Save(_ string, _ *Config) error { return errNotImplemented }
-
-// Locate returns the location of config.toml.
-//
-// PENDING U-API-1: the location is undecided; callers inject explicit paths
-// (see cli.Deps.ConfigPath) until it is.
-func Locate() (string, error) { return "", errNotImplemented }
