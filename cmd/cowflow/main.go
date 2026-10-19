@@ -7,11 +7,43 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/deverity/cowflow/internal/cli"
 	"github.com/deverity/cowflow/internal/config"
+	"github.com/deverity/cowflow/internal/git"
 	"github.com/deverity/cowflow/internal/platform"
 )
+
+// gitTimeout bounds each git call.
+// PENDING U-API-11: scheduler.command_timeout_seconds has no stated default.
+const gitTimeout = 30 * time.Second
+
+// brokenGit is the git.Runner used when the git executable cannot be found,
+// so that commands such as doctor can report it instead of failing to start.
+type brokenGit struct{ err error }
+
+func (b brokenGit) Run(context.Context, string, ...string) ([]byte, error) { return nil, b.err }
+
+func newDeps() cli.Deps {
+	host := platform.NewHost()
+	var runner git.Runner
+	if r, err := git.NewExecRunner(git.ExecOptions{Timeout: gitTimeout}); err != nil {
+		runner = brokenGit{err: err}
+	} else {
+		runner = r
+	}
+	return cli.Deps{
+		Version:    version,
+		Commit:     commit,
+		Date:       date,
+		ConfigPath: config.Locate,
+		Host:       host,
+		DevDrive:   platform.NewDevDrive(host),
+		Git:        runner,
+		Elevate:    elevate,
+	}
+}
 
 // Set at build time via -ldflags "-X main.version=... -X main.commit=... -X main.date=...".
 var (
@@ -22,18 +54,9 @@ var (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	host := platform.NewHost()
 	code := cli.Execute(ctx, os.Args[1:],
 		cli.IOStreams{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
-		cli.Deps{
-			Version: version, Commit: commit, Date: date,
-			// PENDING SPEC-GAPS U-API-1: Locate reports that the
-			// location is undecided instead of guessing one.
-			ConfigPath: config.Locate,
-			Host:       host,
-			DevDrive:   platform.NewDevDrive(host),
-			Elevate:    elevate,
-		})
+		newDeps())
 	stop()
 	os.Exit(code)
 }

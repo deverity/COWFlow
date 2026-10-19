@@ -6,15 +6,21 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/deverity/cowflow/internal/git"
 	"github.com/deverity/cowflow/internal/platform"
 )
 
 // Deps is everything a command needs; tests inject fakes here.
 type Deps struct {
 	Version, Commit, Date string
-	ConfigPath            func() (string, error) // until U-API-1 (location) is decided, tests inject it
-	Host                  platform.Host
-	DevDrive              platform.DevDrive
+
+	// ConfigPath returns the path of config.toml. PENDING U-API-1: the
+	// location is undecided, so production wiring uses config.Locate and
+	// tests inject a path.
+	ConfigPath func() (string, error)
+	Host       platform.Host
+	DevDrive   platform.DevDrive
+	Git        git.Runner
 	// Elevate relaunches cowflow with args through UAC (one prompt) and
 	// returns the elevated process's exit code.
 	Elevate func(ctx context.Context, args []string) (exitCode int, err error)
