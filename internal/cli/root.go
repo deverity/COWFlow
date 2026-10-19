@@ -48,6 +48,7 @@ func NewRootCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 func Execute(ctx context.Context, args []string, ios IOStreams, deps Deps) int {
 	st := &runState{}
 	root := NewRootCmd(ios, deps, st)
+	addCommands(root)
 	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)
 	code := codeOf(err, st.parsed)

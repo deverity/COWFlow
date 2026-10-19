@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cobra-based `cowflow` root command with a persistent `--json` flag and the
   §14 exit codes (`1` usage, `2` state, `3` conflict, `4` policy); errors go
   to stderr, as a JSON document in `--json` mode.
+- Full SCOPE.md §14 command tree with its arguments and flags; commands
+  are stubs that report "not implemented yet" until later sprints.
 - CI: lint, tests on Windows/Linux/macOS, `govulncheck`, `gitleaks`, DCO check.
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
