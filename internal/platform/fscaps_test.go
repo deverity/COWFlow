@@ -63,6 +63,9 @@ func TestOSInfo(t *testing.T) {
 }
 
 func TestDevDrive_Unsupported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has a real DevDrive (S0-T16)")
+	}
 	d := NewDevDrive(NewHost())
 	_, err := d.Provision(context.Background(), DevDriveSpec{})
 	require.ErrorIs(t, err, ErrUnsupported)
