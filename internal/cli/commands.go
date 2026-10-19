@@ -9,7 +9,7 @@ func addCommands(root *cobra.Command, ios IOStreams, deps Deps, st *runState) {
 		// Setup
 		newInitCmd(ios, deps, st),
 		newMCPCmd(),
-		newDoctorCmd(),
+		newDoctorCmd(ios, deps, st),
 		newDaemonCmd(),
 		newDevDriveCmd(ios, deps, st),
 		// Tasks

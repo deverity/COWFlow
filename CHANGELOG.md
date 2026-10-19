@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cowflow devdrive create|attach|detach|status` manage the Dev Drive
   described by `[devdrive]` in the config file; `status` needs no
   administrator rights. All support `--json`.
+- `cowflow doctor`: read-only report of the machine and repository against the
+  SCOPE.md §7 requirements (Dev Drive mounted, ReFS block clone vs NTFS
+  without COW, ProjFS when configured, `core.longpaths`, `core.autocrlf`,
+  `.gitattributes`) plus `git >= 2.40`, with a fix command per finding. Prints
+  a table or, with `--json`, `{"checks": [...], "ok": bool}`; exits non-zero
+  only when a check fails. The Defender exclusion check waits for SPEC-GAPS C14.
 - Git version gate (`git >= 2.40`, typed `ErrVersionTooOld`) and a `ConfigGet`
   probe that distinguishes an unset key from a git failure (`internal/git`).
 - Platform doctor probes: Dev Drive detection in `Host.Volume` and ProjFS

@@ -154,7 +154,7 @@ func TestStubs_ExitCode(t *testing.T) {
 }
 
 func TestStubs_NotImplementedMessage(t *testing.T) {
-	r := run(t, "doctor")
+	r := run(t, "status")
 	assert.Contains(t, r.stderr, errNotImplemented.Error())
 }
 
