@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
 - `internal/platform`: `Host`/`DevDrive` contracts, OS info and filesystem
   capability detection (`ReFS`/`NTFS` block refcounting, btrfs, APFS).
+- Test harness (`test/harness`): `FakeHost` and `SimDevDrive`, a deterministic
+  simulated VHDX Dev Drive that can fail at any provisioning step and drops
+  its volume on detach or reboot.
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
 - `config.example.toml` at the repository root (tested to always load and
   validate), and `config.Save`, an atomic rewrite that keeps the previous
