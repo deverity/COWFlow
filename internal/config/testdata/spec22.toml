@@ -1,0 +1,165 @@
+[daemon]
+bind = "127.0.0.1:8787"
+state_dir = "X:/state"
+log_level = "info"
+
+[project]
+lead = "human"
+branching = "gitflow"
+default_base = "develop"
+
+[devdrive]
+enabled = true
+path = "C:/cf/cowflow.vhdx"
+mount = "X:"
+size_gb = 50
+auto_attach = true
+
+[workspace]
+provider = "auto"               # auto | cow_clone | projfs | git_worktree | container
+root = "X:/ws"
+golden_root = "X:/golden"
+keep_failed_workspaces = true
+keep_failed_hours = 72
+cleanup_completed = false
+sparse_by_intent = true
+port_range_per_workspace = 10
+port_range_start = 40000
+
+[workspace.projfs]
+enabled = false                 # experimental
+scope_only = true
+fsmonitor = true
+blob_cache_mb = 512
+
+[cache]
+pnpm_store   = "X:/cache/pnpm"
+go_modcache  = "X:/cache/gomod"
+go_cache     = "X:/cache/gobuild"
+cargo_target = "X:/cache/cargo-target"
+
+[git]
+shared_ref_namespace = "refs/cowflow/changes"
+change_retention_days = 30
+default_sync_strategy = "merge"
+require_gitattributes = true
+
+[scheduler]
+max_agents = 20
+max_builds = 3
+max_tests = 6
+max_integrations_per_target = 1
+session_timeout_seconds = 3600
+command_timeout_seconds = 900
+retry_limit = 2
+retry_backoff_seconds = [30, 120]
+workspace_disk_budget_gb = 100
+golden_cache_gb = 30
+
+[scheduler.llm]
+max_concurrent_requests = 8
+tokens_per_hour_budget = 4000000
+cost_per_day_budget_usd = 150
+on_budget_exceeded = "pause"
+
+[collaboration]
+presence_ttl_seconds = 90
+heartbeat_interval_seconds = 20
+escalation_after_minutes = 30
+event_delivery = "sse"
+
+[integration]
+require_validation = true
+promotion_mode = "manual"
+rerun_on_stale = true
+diff_only_first = true
+
+[integration.post_promotion]
+enabled = false
+gates = ["test"]
+auto_revert = true
+
+[[gates]]
+name = "build"
+cmd = ["go", "build", "./..."]
+timeout_seconds = 600
+required = true
+
+[[gates]]
+name = "test"
+cmd = ["go", "test", "./...", "-race"]
+timeout_seconds = 900
+required = true
+
+[[gates]]
+name = "lint"
+cmd = ["golangci-lint", "run"]
+timeout_seconds = 300
+required = false
+
+[[invariants]]
+name = "no-cmd-import-in-internal"
+kind = "pattern"
+deny = ["internal/**: import \"cowflow/cmd"]
+check_on_publish = true
+
+[[resources]]
+name = "compile"
+slots = 3
+lease_ttl_seconds = 600
+queue = "fifo"
+
+[[resources]]
+name = "test"
+slots = 6
+lease_ttl_seconds = 900
+queue = "fifo"
+
+[[resources]]
+name = "test-db"
+slots = 1
+lease_ttl_seconds = 900
+queue = "priority"
+
+[conventions]
+preset = "gitflow"                 # gitflow | trunk | none
+enforce_branch_names = true
+enforce_protected_branches = true
+enforce_commit_format = true
+tag_format = "v{major}.{minor}.{patch}"
+
+[scheduler.llm.anthropic]
+max_concurrent_requests = 5
+cost_per_day_budget_usd = 80
+
+[scheduler.llm.openai]
+max_concurrent_requests = 6
+cost_per_day_budget_usd = 60
+
+[runner]
+default = "claude-code"
+inject_protocol = true
+lead = "claude-code"               # runner used when lead = agent:<task>
+
+[runner.claude-code]
+provider        = "anthropic"
+cmd             = ["claude", "-p"]
+mcp_config_flag = ["--mcp-config", "{mcp_config}"]
+permission_flag = ["--dangerously-skip-permissions"]
+context_file    = "CLAUDE.md"
+prompt_mode     = "arg"
+
+[runner.codex]
+provider        = "openai"
+cmd             = ["codex", "exec"]
+mcp_config_flag = ["--config", "mcp_servers.cowflow.command=cowflow"]
+permission_flag = ["--full-auto"]
+context_file    = "AGENTS.md"
+prompt_mode     = "arg"
+
+[watchdog]
+enabled = false
+budget_tokens_per_hour = 200000
+
+[security]
+blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]
