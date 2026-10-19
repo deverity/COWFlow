@@ -42,8 +42,9 @@ var specCommands = []string{
 }
 
 func newTree() *cobra.Command {
-	root := NewRootCmd(IOStreams{}, Deps{}, &runState{})
-	addCommands(root)
+	st := &runState{}
+	root := NewRootCmd(IOStreams{}, Deps{}, st)
+	addCommands(root, IOStreams{}, Deps{}, st)
 	return root
 }
 

@@ -4,14 +4,14 @@ import "github.com/spf13/cobra"
 
 // addCommands attaches the SCOPE.md §14 command tree to root. §14 is a
 // closed list: do not add commands or aliases it does not name.
-func addCommands(root *cobra.Command) {
+func addCommands(root *cobra.Command, ios IOStreams, deps Deps, st *runState) {
 	root.AddCommand(
 		// Setup
-		newInitCmd(),
+		newInitCmd(ios, deps, st),
 		newMCPCmd(),
 		newDoctorCmd(),
 		newDaemonCmd(),
-		newDevDriveCmd(),
+		newDevDriveCmd(ios, deps, st),
 		// Tasks
 		newTaskCmd(),
 		newRunCmd(),

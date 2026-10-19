@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `platform.AutoAttacher` seam with `NewAutoAttacher`: until the auto-attach
   mechanism is decided (SPEC-GAPS U-PLAT-5), `Enable` returns
   `ErrAutoAttachUndecided` on Windows and `ErrUnsupported` elsewhere.
+- `cowflow init --devdrive <size> --path <file.vhdx> --letter <X>` provisions
+  an ReFS Dev Drive VHDX on Windows 11 22H2+, asking for administrator rights
+  once (one UAC prompt), and records it under `[devdrive]` in the config file
+  only after provisioning succeeds (the previous file is kept as `.bak`). It
+  reports that auto-attach at boot is not configured yet and prints, without
+  applying it, the suggested Defender exclusion command. Other systems get an
+  explicit "COWFlow will use git_worktree" message. `--path` and `--letter`
+  are required until their defaults are decided.
+- `cowflow devdrive create|attach|detach|status` manage the Dev Drive
+  described by `[devdrive]` in the config file; `status` needs no
+  administrator rights. All support `--json`.
 - Git version gate (`git >= 2.40`, typed `ErrVersionTooOld`) and a `ConfigGet`
   probe that distinguishes an unset key from a git failure (`internal/git`).
 - Platform doctor probes: Dev Drive detection in `Host.Volume` and ProjFS

@@ -5,17 +5,28 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/deverity/cowflow/internal/platform"
 )
 
 // Deps is everything a command needs; tests inject fakes here.
 type Deps struct {
 	Version, Commit, Date string
+	ConfigPath            func() (string, error) // until U-API-1 (location) is decided, tests inject it
+	Host                  platform.Host
+	DevDrive              platform.DevDrive
+	// Elevate relaunches cowflow with args through UAC (one prompt) and
+	// returns the elevated process's exit code.
+	Elevate func(ctx context.Context, args []string) (exitCode int, err error)
 }
 
 // runState records what the run learned while cobra parsed the command line.
 type runState struct {
 	parsed bool // flags and args were valid and a command started running
 	json   bool // --json
+
+	// args is the command line without the program name, for elevation.
+	args []string
 }
 
 // NewRootCmd builds the cowflow root command.
@@ -46,9 +57,9 @@ func NewRootCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 
 // Execute runs the CLI with args and returns the process exit code.
 func Execute(ctx context.Context, args []string, ios IOStreams, deps Deps) int {
-	st := &runState{}
+	st := &runState{args: args}
 	root := NewRootCmd(ios, deps, st)
-	addCommands(root)
+	addCommands(root, ios, deps, st)
 	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)
 	code := codeOf(err, st.parsed)
