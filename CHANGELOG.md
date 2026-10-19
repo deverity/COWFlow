@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hermetic test harness (`test/harness`): a fake clock, throw-away Git
   repositories isolated from the developer's Git config, and Git
   fault injection (exit code, timeout, truncated output).
+- `internal/platform` (Windows): `virtdisk.dll` bindings to create, open,
+  attach and detach a dynamic VHDX, and `RunElevated`, which relaunches a
+  command once through the UAC prompt without any shell.
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
 - `config.example.toml` at the repository root (tested to always load and
   validate), and `config.Save`, an atomic rewrite that keeps the previous
