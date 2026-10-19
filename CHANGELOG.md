@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration schema and strict TOML decoding (`internal/config`): every
   SCOPE.md §22 section is decoded and unknown keys are rejected with their
   dotted path.
+- SQLite store (`internal/store`): WAL, busy timeout, foreign keys and
+  immediate transactions on every pooled connection, plus an embedded,
+  gap-checked migration runner that is safe with concurrent openers.
 - CI: lint, tests on Windows/Linux/macOS, `govulncheck`, `gitleaks`, DCO check.
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
