@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only the spec-stated defaults, `Load` applies them before decoding and
   validates afterwards, and `Validate` reports every problem at once
   (including rejecting a non-loopback `daemon.bind`).
+- Process-tree control in `internal/platform`: commands start inside a
+  Windows Job Object (`KILL_ON_JOB_CLOSE`, created suspended) or a Unix
+  process group, and cancellation stops the whole tree (polite stop, grace
+  period, then kill).
 - CI: lint, tests on Windows/Linux/macOS, `govulncheck`, `gitleaks`, DCO check.
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
 - `internal/platform`: `Host`/`DevDrive` contracts, OS info and filesystem
