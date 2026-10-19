@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   immediate-transaction helper and project insert/lookup in `internal/store`.
 - CI: lint, tests on Windows/Linux/macOS, `govulncheck`, `gitleaks`, DCO check.
 - Release pipeline: GoReleaser with checksums and build provenance attestation.
+- `internal/platform`: `Host`/`DevDrive` contracts, OS info and filesystem
+  capability detection (`ReFS`/`NTFS` block refcounting, btrfs, APFS).
 - AI agent guide (`AGENTS.md`, `CLAUDE.md`) and implementation skills (`docs/skill/`).
 
 ### Changed
