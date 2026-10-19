@@ -3,12 +3,14 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // registers driver "sqlite" (pure Go, no cgo)
+	"modernc.org/sqlite" // also registers driver "sqlite" (pure Go, no cgo)
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/deverity/cowflow/internal/domain"
 )
@@ -58,7 +60,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-	if err := db.PingContext(ctx); err != nil {
+	if err := ping(ctx, db, opt.BusyTimeout); err != nil {
 		_ = db.Close() // the ping error is the one that matters
 		return nil, fmt.Errorf("store: ping %s: %w", path, err)
 	}
@@ -74,6 +76,34 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// pingRetry is the pause between connection attempts that hit SQLITE_BUSY.
+const pingRetry = 25 * time.Millisecond
+
+// ping opens the first connection, retrying while it reports SQLITE_BUSY for
+// up to busy. The connection pragmas run before busy_timeout covers them: on
+// Windows a concurrent opener switching to WAL can make them fail at once.
+func ping(ctx context.Context, db *sql.DB, busy time.Duration) error {
+	for tries := int(busy / pingRetry); ; tries-- {
+		err := db.PingContext(ctx)
+		if err == nil || tries <= 0 || !isBusy(err) {
+			return err
+		}
+		t := time.NewTimer(pingRetry)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return errors.Join(err, ctx.Err())
+		case <-t.C:
+		}
+	}
+}
+
+// isBusy reports whether err is SQLITE_BUSY or one of its extended codes.
+func isBusy(err error) bool {
+	var se *sqlite.Error
+	return errors.As(err, &se) && se.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
 // Close releases the database handle.
