@@ -1,10 +1,13 @@
 name: ci
 
+# Disabled until there is code to check: manual runs only.
+# To re-enable, uncomment the triggers below (see docs/GITFLOW.md § 5).
 on:
-  push:
-    branches: [master, develop]
-  pull_request:
-    branches: [master, develop]
+  workflow_dispatch:
+  # push:
+  #   branches: [master, develop]
+  # pull_request:
+  #   branches: [master, develop]
 
 permissions:
   contents: read

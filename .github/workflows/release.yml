@@ -1,8 +1,11 @@
 name: release
 
+# Disabled until the first release: manual runs only.
+# To re-enable, uncomment the trigger below (see docs/GITFLOW.md § 5).
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+  # push:
+  #   tags: ["v*"]
 
 permissions:
   contents: read

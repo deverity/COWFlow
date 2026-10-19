@@ -238,6 +238,13 @@ public repository will notice.
 The job names in `ci.yml` are the status check names required by branch
 protection — keep them in sync.
 
+> **Current state: workflows disabled.** Until there is real code to check,
+> `ci.yml` and `release.yml` run only on manual dispatch (`workflow_dispatch`).
+> Do not add required status checks to branch protection while they are
+> disabled — PRs would wait forever for checks that never run. To re-enable,
+> uncomment the `push`/`pull_request` triggers in `ci.yml` and the `tags`
+> trigger in `release.yml` in a `ci/` PR, then add the required checks.
+
 ---
 
 ## 6. One-time setup
