@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -30,6 +31,27 @@ func (h *host) Volume(ctx context.Context, path string) (VolumeInfo, error) {
 		Path:       mountPointOf(path),
 		Filesystem: fs,
 		BlockClone: fs == "btrfs",
+	}, nil
+}
+
+// volumeOf fills a [Volume] from statfs(2) and the mount root's st_dev.
+// BlockRefcounting is a hint: btrfs and xfs may reflink, the probe decides.
+func volumeOf(_ context.Context, path string) (Volume, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(path, &st); err != nil {
+		return Volume{}, fmt.Errorf("statfs %q: %w", path, err)
+	}
+	name := fsNameFromMagic(int64(st.Type)) //nolint:unconvert // Type is int32 on some arches
+	mount := mountPointOf(path)
+	var ms unix.Stat_t
+	if err := unix.Stat(mount, &ms); err != nil {
+		return Volume{}, fmt.Errorf("stat mount root %q: %w", mount, err)
+	}
+	return Volume{
+		Filesystem:       name,
+		ID:               strconv.FormatUint(uint64(ms.Dev), 16), //nolint:unconvert // Dev width varies
+		MountPath:        mount,
+		BlockRefcounting: name == "btrfs" || name == "xfs",
 	}, nil
 }
 

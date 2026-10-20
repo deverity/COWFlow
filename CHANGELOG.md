@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and unpublished-commit listing, each a single argv call through the git
   runner. The runner now takes a per-call `GIT_INDEX_FILE` and stdin, and also
   strips an inherited `GIT_COMMON_DIR`.
+- Volume identity and free space (`platform.VolumeOf`, `SameVolume`,
+  `FreeBytes`): lowercase filesystem name, volume ID, mount path, Dev Drive
+  state, block-refcounting hint and cluster size. `SameVolume` and
+  `FreeBytes` also accept paths that do not exist yet.
 - Dev Drive auto-attach (`platform.NewAutoAttacher`, `NewAutoAttacherFor`):
   on Windows `Enable` registers the Task Scheduler task
   `\COWFlow\devdrive-attach-<hash of the VHDX path>`, which runs
