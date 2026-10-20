@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/deverity/cowflow/internal/git"
-	"github.com/deverity/cowflow/internal/platform"
 )
 
 // WorktreeName is the provider name of the git_worktree backend.
@@ -176,32 +175,29 @@ func (p *WorktreeProvider) configure(ctx context.Context, path string) error {
 // the stale admin entry of a failed Create, on a context detached from ctx.
 // It only runs for a path that did not exist when Create began. The
 // directory is removed only if it still resolves to itself under its parent.
+//
+// path need not be canonical: on Windows it may hold 8.3 short names (a
+// %TEMP% of C:\Users\RUNNER~1) while git lists, and Confine returns, the
+// long form. Every comparison is therefore made between canonical paths.
 func (p *WorktreeProvider) compensate(ctx context.Context, repo, path string) error {
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), worktreeCleanupTimeout)
 	defer cancel()
 	var errs []error
+	want := canonicalOrClean(path)
 	wts, err := p.git.WorktreeList(cctx, repo)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("list worktrees: %w", err))
 	}
 	for _, wt := range wts {
-		if samePath(wt.Path, path) {
+		if samePath(wt.Path, path) || samePath(canonicalOrClean(wt.Path), want) {
 			if err := p.git.WorktreeRemove(cctx, repo, path, true); err != nil {
 				errs = append(errs, fmt.Errorf("remove worktree %s: %w", path, err))
 			}
 			break
 		}
 	}
-	parent := filepath.Dir(path)
-	switch c, err := platform.Confine(parent, path); {
-	case err != nil:
-		errs = append(errs, fmt.Errorf("refusing to remove %s: %w", path, err))
-	case !samePath(c, path) || samePath(c, parent):
-		errs = append(errs, fmt.Errorf("refusing to remove %s: it resolves to %s", path, c))
-	default:
-		if err := os.RemoveAll(path); err != nil {
-			errs = append(errs, fmt.Errorf("remove %s: %w", path, err))
-		}
+	if err := removeOwnDir(path); err != nil {
+		errs = append(errs, err)
 	}
 	if err := p.git.WorktreePrune(cctx, repo); err != nil {
 		errs = append(errs, fmt.Errorf("prune worktrees: %w", err))

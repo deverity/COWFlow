@@ -336,6 +336,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same command.
 - `cowflow golden list` shows the golden tree ID (`ID` column, `id` in
   `--json`).
+- `internal/workspace`: a failed `git_worktree` or `cow_clone` create now
+  cleans up when the workspace path is not in canonical form (a Windows 8.3
+  short name such as `C:\Users\RUNNER~1`, or a symlinked parent). It used to
+  refuse to remove the directory and leave the worktree registered.
 
 ### Changed
 

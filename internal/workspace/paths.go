@@ -20,6 +20,40 @@ func LogsDir(stateDir, workspaceID string) string {
 	return filepath.Join(stateDir, "logs", workspaceID)
 }
 
+// canonicalOrClean returns the canonical form of p, or p cleaned when it
+// cannot be resolved. It is for comparisons only, never for removal.
+func canonicalOrClean(p string) string {
+	if c, err := platform.Canonical(filepath.FromSlash(p)); err == nil {
+		return c
+	}
+	return filepath.Clean(filepath.FromSlash(p))
+}
+
+// removeOwnDir removes the directory at path only if it resolves to itself:
+// its canonical parent joined with its own name. A link as the last
+// element, or a path that resolves anywhere else, is refused. path need not
+// be canonical (Windows 8.3 short names are fine); the removal acts on the
+// canonical path.
+func removeOwnDir(path string) error {
+	path = filepath.Clean(path)
+	parent, err := platform.Canonical(filepath.Dir(path))
+	if err != nil {
+		return fmt.Errorf("refusing to remove %s: %w", path, err)
+	}
+	own := filepath.Join(parent, filepath.Base(path))
+	c, err := platform.Confine(parent, own)
+	switch {
+	case err != nil:
+		return fmt.Errorf("refusing to remove %s: %w", path, err)
+	case !samePath(c, own) || samePath(c, parent):
+		return fmt.Errorf("refusing to remove %s: it resolves to %s", path, c)
+	}
+	if err := os.RemoveAll(c); err != nil {
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	return nil
+}
+
 // lexicalPath is <root>/<slug> without touching the filesystem. It is what a
 // pending_mount row records, since the volume holding root is not there to
 // resolve against.

@@ -138,6 +138,29 @@ func TestWorktreeCreateFailureCompensates(t *testing.T) {
 	assertNoAdminEntry(t, f, "boom")
 }
 
+// The workspace path reaches the provider in a non-canonical spelling, as a
+// Windows %TEMP% with 8.3 short names (C:\Users\RUNNER~1) does: git lists the
+// worktree, and Confine resolves the path, in the long form. Compensation
+// must still find the registration and remove the directory. A symlinked
+// parent stands in for the short name on every OS.
+func TestWorktreeCreateFailureCompensatesNonCanonicalPath(t *testing.T) {
+	t.Parallel()
+	f := newWtFixture(t, "ntfs")
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(f.root, alias); err != nil {
+		t.Skipf("cannot create symlinks here (needs a privilege on Windows): %v", err)
+	}
+	f.vols.Set(platform.Volume{Filesystem: "ntfs", ID: "v1", MountPath: alias})
+	spec := f.spec("boom", "feature/boom")
+	spec.Path = filepath.Join(alias, "boom")
+	f.runner.Inject(harness.GitFault{Match: []string{"config"}, ExitCode: 128})
+	_, err := f.prov.Create(context.Background(), spec)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "compensation", "compensation succeeded")
+	assert.NoDirExists(t, filepath.Join(f.root, "boom"))
+	assertNoAdminEntry(t, f, "boom")
+}
+
 func TestWorktreeCreateAddFailureLeavesNothing(t *testing.T) {
 	t.Parallel()
 	f := newWtFixture(t, "ntfs")
