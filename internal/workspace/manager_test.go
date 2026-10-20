@@ -645,22 +645,54 @@ func TestCreateResumesPendingMount(t *testing.T) {
 		assert.Len(t, f.events.Events(), 1, "no second pending_mount event")
 	})
 
-	t.Run("auto cannot be recorded on resume yet", func(t *testing.T) {
+	t.Run("auto records the final selection on resume", func(t *testing.T) {
 		f.dev.SimulateReboot()
 		req := f.request("op-auto", "auto")
 		_, _, err := m.Create(context.Background(), req)
 		require.ErrorIs(t, err, workspace.ErrPendingMount)
+		find := func() domain.WorkspaceRecord {
+			for _, r := range f.rows(t) {
+				if r.OpID == "op-auto" {
+					return r
+				}
+			}
+			t.Fatal("row op-auto missing")
+			return domain.WorkspaceRecord{}
+		}
+		pending := find()
 
 		_, err = f.dev.Attach(context.Background(), spec)
 		require.NoError(t, err)
+		f.vols.Set(platform.Volume{Filesystem: "refs", ID: "vol-dev", MountPath: mount, DevDrive: true})
+		w, sel, err := m.Create(context.Background(), req)
+		require.NoError(t, err)
+		assert.Equal(t, pending.ID, w.ID)
+		assert.Equal(t, workspace.ProviderCowClone, sel.Provider.Name())
+
+		got := find()
+		assert.Equal(t, domain.WorkspaceReady, got.State)
+		assert.Equal(t, workspace.ProviderCowClone, got.Provider)
+		assert.Equal(t, sel.Caps.CopyOnWrite.String(), got.CowKind)
+		assert.Equal(t, "refs", got.Filesystem)
+		assert.Equal(t, w.Path, got.Path)
+	})
+
+	t.Run("a changed branch keeps the row pending_mount", func(t *testing.T) {
+		f.dev.SimulateReboot()
+		req := f.request("op-moved", "moved")
+		_, _, err := m.Create(context.Background(), req)
+		require.ErrorIs(t, err, workspace.ErrPendingMount)
+		_, err = f.dev.Attach(context.Background(), spec)
+		require.NoError(t, err)
+		f.vols.Set(platform.Volume{Filesystem: "refs", ID: "vol-dev", MountPath: mount, DevDrive: true})
+		req.Task.Branch = "feat/other"
 		_, _, err = m.Create(context.Background(), req)
-		require.ErrorContains(t, err, "cannot record the selection")
+		require.ErrorContains(t, err, "the row records branch")
 		for _, r := range f.rows(t) {
-			if r.OpID == "op-auto" {
-				assert.Equal(t, domain.WorkspaceFailed, r.State)
+			if r.OpID == "op-moved" {
+				assert.Equal(t, domain.WorkspacePendingMount, r.State)
 			}
 		}
-		assert.NoDirExists(t, filepath.Join(root, "auto"))
 	})
 }
 

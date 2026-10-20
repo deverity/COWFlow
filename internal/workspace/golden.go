@@ -636,13 +636,24 @@ func (c *GoldenCache) GC(ctx context.Context, projectID string, budgetBytes int6
 	if budgetBytes < 0 {
 		return rep, fmt.Errorf("golden gc: negative budget %d", budgetBytes)
 	}
+	now := c.clock.Now()
+	stale := c.staleAfter()
+	// U-PLAT-13: a count with no use for command_timeout_seconds leaked from a
+	// crashed process; reset it with a warning before judging in-use trees.
+	reset, err := c.store.ResetStaleGoldenInUse(ctx, projectID, now.Add(-stale))
+	if err != nil {
+		return rep, fmt.Errorf("golden gc: reset stale references: %w", err)
+	}
+	for _, sha := range reset {
+		rep.Warnings = append(rep.Warnings, fmt.Sprintf(
+			"golden tree %s: in_use reset to 0, not used for %s", sha, stale))
+		c.log.Warn("golden gc: reset stale in_use", "project_id", projectID, "base_sha", sha, "stale_after", stale)
+	}
 	rows, err := c.store.ListGolden(ctx, projectID)
 	if err != nil {
 		return rep, fmt.Errorf("golden gc: list: %w", err)
 	}
 	sortLRU(rows)
-	now := c.clock.Now()
-	stale := c.staleAfter()
 	shas := make([]string, 0, len(rows))
 	var ready []domain.GoldenTree
 	var total int64
@@ -663,12 +674,6 @@ func (c *GoldenCache) GC(ctx context.Context, projectID string, budgetBytes int6
 		case domain.GoldenReady:
 			ready = append(ready, g)
 			total += g.SizeBytes
-			if g.InUse > 0 && !g.LastUsedAt.Add(stale).After(now) {
-				// Follow-up: reset it once the store can (SCOPE.md §6.4).
-				rep.Warnings = append(rep.Warnings, fmt.Sprintf(
-					"golden tree %s has in_use=%d unchanged since %s (older than %s): kept",
-					g.BaseSHA, g.InUse, g.LastUsedAt.UTC().Format(time.RFC3339), stale))
-			}
 		}
 	}
 	for _, g := range ready {

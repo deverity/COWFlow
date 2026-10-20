@@ -477,19 +477,18 @@ func TestGoldenGCSkipsInUse(t *testing.T) {
 	row, _ := f.row(t, shaN(9))
 	assert.Equal(t, domain.GoldenBuilding, row.State)
 
-	// A reference held past command_timeout_seconds is reported, not reset.
+	// A reference held past command_timeout_seconds is reset with a warning
+	// (U-PLAT-13), so the tree is removed in the same run.
 	f.clock.Advance(2 * time.Hour)
 	rep, err = c.GC(ctx, goldenProject, 0)
 	require.NoError(t, err)
-	assert.Equal(t, []string{shaN(1)}, rep.SkippedInUse)
-	require.Len(t, rep.Warnings, 1)
-	assert.Contains(t, rep.Warnings[0], "in_use=1")
-	assert.NoDirExists(t, liveTmp, "the builder is stale now")
-
-	hold()
-	rep, err = c.GC(ctx, goldenProject, 0)
-	require.NoError(t, err)
+	assert.Empty(t, rep.SkippedInUse)
 	assert.Equal(t, []string{shaN(1)}, rep.Removed)
+	require.Len(t, rep.Warnings, 1)
+	assert.Contains(t, rep.Warnings[0], "in_use reset to 0")
+	assert.Contains(t, rep.Warnings[0], shaN(1))
+	assert.NoDirExists(t, liveTmp, "the builder is stale now")
+	hold() // releasing a reference the reset already dropped must not fail
 }
 
 func TestGoldenGCRemovesFailedAndLeftovers(t *testing.T) {

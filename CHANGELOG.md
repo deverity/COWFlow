@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workspace moves to `creating`, in the same transaction as the audit row; it
   refuses them on any other transition. `ResetStaleGoldenInUse` zeroes the
   `in_use` count of golden trees not used since a cutoff, for `golden gc`.
+- `internal/workspace`: a `pending_mount` workspace requested with provider
+  `auto` now resumes and records the final selection; `golden gc` resets a
+  stale `in_use` count with a warning instead of only reporting it.
 - `internal/workspace`: the `git_worktree` provider, the universal fallback.
   It adds a worktree on a new task branch at the base commit (no checkout for
   a sparse workspace), sets `core.autocrlf=false` per worktree (plus

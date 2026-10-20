@@ -27,6 +27,9 @@ type Store interface {
 	ListGolden(ctx context.Context, projectID string) ([]domain.GoldenTree, error)
 	MarkGoldenDeleting(ctx context.Context, projectID, sha string) (bool, error) // false if in use
 	DeleteGolden(ctx context.Context, projectID, sha string) error
+	// ResetStaleGoldenInUse sets in_use to 0 on trees last used before cutoff
+	// and returns their base SHAs (U-PLAT-13).
+	ResetStaleGoldenInUse(ctx context.Context, projectID string, cutoff time.Time) ([]string, error)
 
 	CreateTask(ctx context.Context, t domain.Task) (domain.Task, error) // minimal; S2-E1 extends
 	GetTaskBySlug(ctx context.Context, projectID, slug string) (domain.Task, error)

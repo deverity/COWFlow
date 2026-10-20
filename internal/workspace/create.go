@@ -287,47 +287,40 @@ func (m *Manager) pendingMount(ctx context.Context, req CreateRequest, baseSHA s
 }
 
 // resume continues a pending_mount row whose volume is now there. The row
-// becomes creating first, so every later failure is compensated into failed
-// and frees the port slot.
+// becomes creating first, recording what the manager finally selected, so
+// every later failure is compensated into failed and frees the port slot.
+// The selection is made before the transition: a row requested with auto
+// records the provider, copy-on-write kind, filesystem and canonical path
+// the create will deliver.
 func (m *Manager) resume(ctx context.Context, req CreateRequest, row domain.WorkspaceRecord,
 	baseSHA string, start time.Time) (*Workspace, Selection, error) {
-	if err := m.store.SetWorkspaceState(ctx, row.ID, domain.WorkspaceCreating, domain.StateChange{}); err != nil {
-		return nil, Selection{}, fmt.Errorf("resume workspace %s: %w", row.ID, err)
-	}
 	p, err := m.plan(ctx, req, baseSHA)
 	if err == nil {
 		err = m.resumable(row, req, p)
 	}
 	if err != nil {
-		return nil, Selection{}, m.compensate(ctx, req, row, plan{}, false, err)
+		return nil, Selection{}, fmt.Errorf("resume workspace %s: %w", row.ID, err)
 	}
-	m.log.Info("workspace resumed after mount", "workspace_id", row.ID, "op_id", req.OpID)
+	change := domain.StateChange{
+		Provider: p.sel.Provider.Name(), CowKind: p.sel.Caps.CopyOnWrite.String(),
+		Filesystem: p.sel.Caps.Filesystem, Path: p.path,
+	}
+	if err := m.store.SetWorkspaceState(ctx, row.ID, domain.WorkspaceCreating, change); err != nil {
+		return nil, Selection{}, fmt.Errorf("resume workspace %s: %w", row.ID, err)
+	}
+	row.Provider, row.CowKind, row.Filesystem, row.Path = change.Provider, change.CowKind, change.Filesystem, change.Path
+	m.log.Info("workspace resumed after mount", "workspace_id", row.ID, "op_id", req.OpID,
+		"provider", change.Provider, "cow_kind", change.CowKind, "filesystem", change.Filesystem)
 	return m.build(ctx, req, row, p, start)
 }
 
-// resumable checks that the pending_mount row already records what the
-// create will deliver. The store contract (sprint-1.md §6.5) has no
-// operation to change a row's provider, copy-on-write kind, filesystem or
-// path when it leaves pending_mount, so a row that recorded "auto" cannot be
-// resumed without recording something false. The recorded path is the
-// lexical <root>/<slug>; it must still name the canonical path the provider
-// gets.
+// resumable checks that the request still describes the pending_mount row:
+// the same branch at the same base. The provider, kind, filesystem and path
+// are not compared; the selection made now replaces them (U-PLAT-13 retry).
 func (m *Manager) resumable(row domain.WorkspaceRecord, req CreateRequest, p plan) error {
-	name := p.sel.Provider.Name()
-	lexical, err := lexicalPath(m.cfg.Workspace.Root, req.Task.Slug)
-	if err != nil {
-		return err
-	}
-	switch {
-	case row.Provider != name:
-		return fmt.Errorf("resume workspace %s: the row records provider %q but %q was selected; "+
-			"the store cannot record the selection yet, retry with a new op id", row.ID, row.Provider, name)
-	case !samePath(row.Path, p.path) && !samePath(row.Path, lexical):
-		return fmt.Errorf("resume workspace %s: the row records path %q but the workspace path is %q; "+
-			"retry with a new op id", row.ID, row.Path, p.path)
-	case row.Branch != req.Task.Branch || row.BaseSHA != p.baseSHA:
-		return fmt.Errorf("resume workspace %s: the row records branch %q at %s, the request %q at %s",
-			row.ID, row.Branch, row.BaseSHA, req.Task.Branch, p.baseSHA)
+	if row.Branch != req.Task.Branch || row.BaseSHA != p.baseSHA {
+		return fmt.Errorf("the row records branch %q at %s, the request %q at %s",
+			row.Branch, row.BaseSHA, req.Task.Branch, p.baseSHA)
 	}
 	return nil
 }

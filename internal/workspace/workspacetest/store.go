@@ -172,6 +172,7 @@ func (s *MemStore) SetWorkspaceState(ctx context.Context, id string, to domain.W
 	if err != nil {
 		return err
 	}
+	selection := c.Provider != "" || c.CowKind != "" || c.Filesystem != "" || c.Path != ""
 	switch {
 	case !to.Valid():
 		return fmt.Errorf("memstore: set workspace state: unknown state %q", to)
@@ -192,6 +193,15 @@ func (s *MemStore) SetWorkspaceState(ctx context.Context, id string, to domain.W
 		return fmt.Errorf("%w: workspace %s: %s -> %s", store.ErrInvalidTransition, id, cur.State, to)
 	}
 	from := cur.State
+	if selection && (from != domain.WorkspacePendingMount || to != domain.WorkspaceCreating) {
+		return fmt.Errorf("%w: workspace %s: provider selection is only recorded on pending_mount -> creating, not %s -> %s",
+			store.ErrInvalidTransition, id, from, to)
+	}
+	// An empty selection field keeps the stored value.
+	cur.Provider = cmp.Or(c.Provider, cur.Provider)
+	cur.CowKind = cmp.Or(c.CowKind, cur.CowKind)
+	cur.Filesystem = cmp.Or(c.Filesystem, cur.Filesystem)
+	cur.Path = cmp.Or(c.Path, cur.Path)
 	cur.State, cur.LastError, cur.UpdatedAt = to, c.LastError, s.now()
 	s.workspaces[id] = cur
 	if c.Audit != nil {
@@ -420,6 +430,30 @@ func (s *MemStore) DeleteGolden(ctx context.Context, projectID, sha string) erro
 	}
 	delete(s.golden, k)
 	return nil
+}
+
+// ResetStaleGoldenInUse sets in_use to 0 on the project's trees with
+// in_use > 0 and last_used_at before cutoff and returns their base SHAs in
+// order.
+func (s *MemStore) ResetStaleGoldenInUse(ctx context.Context, projectID string, cutoff time.Time) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	err := s.lock("ResetStaleGoldenInUse")
+	defer s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	var shas []string
+	for k, g := range s.golden {
+		if k.project == projectID && g.InUse > 0 && g.LastUsedAt.Before(cutoff) {
+			g.InUse, g.UpdatedAt = 0, s.now()
+			s.golden[k] = g
+			shas = append(shas, g.BaseSHA)
+		}
+	}
+	slices.Sort(shas)
+	return shas, nil
 }
 
 // CreateTask inserts a task in state created; a duplicate (project, slug)
