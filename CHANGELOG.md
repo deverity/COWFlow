@@ -35,8 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   letter exits `3` and names the flag to pass. It writes `workspace.root`
   (`X:/ws`), `workspace.golden_root` (`X:/golden`) and the six `cache.*`
   keys (`X:/cache/...`) and creates those directories; `daemon.state_dir` is
-  left to its derived default. It reports that auto-attach at boot is not
-  configured yet and prints, without applying it, the suggested Defender
+  left to its derived default. It registers Dev Drive auto-attach (a Task
+  Scheduler task that runs `cowflow devdrive attach` from the project root at
+  logon of the user who ran init) and sets `devdrive.auto_attach` only when
+  that succeeded; otherwise it warns and names `cowflow devdrive attach` as
+  the fallback. The non-elevated process reports the elevated one's real
+  outcome. It prints, without applying it, the suggested Defender
   exclusion command. Other systems get an explicit "COWFlow will use
   git_worktree" message. A config file that does not parse or validate exits
   `1`; a missing one exits `2`.

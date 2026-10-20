@@ -35,6 +35,11 @@ type ddEnv struct {
 	elevErr  error
 	dirs     []string        // directories init created through Deps.MkdirAll
 	inUse    map[string]bool // drive letters in use
+
+	aa        fakeAttacher                // shared by every attacher the factory returns
+	targets   []platform.AutoAttachTarget // target of each NewAutoAttacher call
+	user      string                      // Deps.CurrentUser result; "" leaves it nil
+	onElevate func(args []string)         // simulates the elevated child
 }
 
 func newDDEnv(t *testing.T, info platform.OSInfo) *ddEnv {
@@ -53,13 +58,16 @@ func newDDEnv(t *testing.T, info platform.OSInfo) *ddEnv {
 }
 
 func (e *ddEnv) deps() Deps {
-	return Deps{
+	d := Deps{
 		Version:    "dev",
 		ConfigPath: func() (string, error) { return e.cfgPath, nil },
 		Host:       e.host,
 		DevDrive:   e.dd,
 		Elevate: func(_ context.Context, args []string) (int, error) {
 			e.elevated = append(e.elevated, append([]string(nil), args...))
+			if e.onElevate != nil && e.elevErr == nil {
+				e.onElevate(args)
+			}
 			return e.elevCode, e.elevErr
 		},
 		MkdirAll: func(path string, _ fs.FileMode) error {
@@ -67,7 +75,15 @@ func (e *ddEnv) deps() Deps {
 			return nil
 		},
 		LetterInUse: func(letter string) (bool, error) { return e.inUse[letter], nil },
+		NewAutoAttacher: func(t platform.AutoAttachTarget) platform.AutoAttacher {
+			e.targets = append(e.targets, t)
+			return &e.aa
+		},
 	}
+	if e.user != "" {
+		d.CurrentUser = func() (string, error) { return e.user, nil }
+	}
+	return d
 }
 
 func (e *ddEnv) run(args ...string) result {
@@ -99,10 +115,13 @@ func TestInitDevDrive_HappyPath(t *testing.T) {
 
 	cfg, err := config.Load(e.cfgPath)
 	require.NoError(t, err)
-	assert.Equal(t, config.DevDrive{Enabled: true, Path: e.vhdx, Mount: "X:", SizeGB: 50, AutoAttach: false}, cfg.DevDrive)
+	assert.Equal(t, config.DevDrive{Enabled: true, Path: e.vhdx, Mount: "X:", SizeGB: 50, AutoAttach: true}, cfg.DevDrive)
 
-	assert.Contains(t, r.stdout, `Add-MpPreference -ExclusionPath 'X:\'`)
-	assert.Contains(t, r.stdout, autoAttachWarning)
+	assert.Contains(t, r.stdout, `Suggested (run as administrator): Add-MpPreference -ExclusionPath 'X:\'`)
+	assert.NotContains(t, r.stdout, autoAttachWarning)
+	require.Len(t, e.aa.specs, 1, "auto-attach registered once")
+	assert.Equal(t, platform.AutoAttachTarget{WorkDir: filepath.Dir(filepath.Dir(e.cfgPath))}, e.targets[0],
+		"project root as working directory; the current token's user in a direct run")
 	assert.Contains(t, r.stdout, "Config written: "+e.cfgPath)
 	assert.Contains(t, r.stdout, "ReFS")
 	assert.Empty(t, e.elevated)
@@ -202,7 +221,7 @@ func TestInitDevDrive_JSON(t *testing.T) {
 	assert.Equal(t, "ReFS", doc.DevDrive.Volume.Filesystem)
 	assert.True(t, doc.DevDrive.Volume.DevDrive)
 	assert.Equal(t, e.cfgPath, doc.ConfigWritten)
-	assert.Contains(t, doc.Warnings, autoAttachWarning)
+	assert.Equal(t, []string{`Suggested (run as administrator): Add-MpPreference -ExclusionPath 'X:\'`}, doc.Warnings)
 }
 
 func TestInitDevDrive_KeepsPreviousConfigAsBackup(t *testing.T) {
@@ -226,26 +245,93 @@ func TestInitDevDrive_KeepsPreviousConfigAsBackup(t *testing.T) {
 	assert.True(t, cfg.DevDrive.Enabled)
 }
 
+// elevatedChild makes e's Elevate run the command line in an elevated
+// process sharing e's config file and Dev Drive, and returns that child.
+func (e *ddEnv) elevatedChild(enableErr error) *ddEnv {
+	child := &ddEnv{
+		t:       e.t,
+		host:    &harness.FakeHost{OSInfo: win11},
+		dd:      e.dd,
+		cfgPath: e.cfgPath,
+		vhdx:    e.vhdx,
+		aa:      fakeAttacher{err: enableErr},
+	}
+	e.onElevate = func(args []string) {
+		r := child.run(args...)
+		require.Equal(e.t, ExitOK, r.code, r.stderr)
+	}
+	return child
+}
+
 func TestInitDevDrive_ElevatesOnce(t *testing.T) {
 	notElevated := win11
 	notElevated.Elevated = false
 	e := newDDEnv(t, notElevated)
+	child := e.elevatedChild(nil)
 	args := e.initArgs()
 
 	r := e.run(args...)
 	require.Equal(t, ExitOK, r.code, r.stderr)
 	require.Len(t, e.elevated, 1)
-	assert.Equal(t, args, e.elevated[0])
+	assert.Equal(t, args, e.elevated[0], "no CurrentUser: the child uses its own token's user")
 	assert.Contains(t, r.stderr, "Requesting administrator rights (one UAC prompt)")
-	assert.Zero(t, e.provisionCalls(), "the parent never provisions; the elevated child does")
+	// The Dev Drive is shared: one provisioning (4 steps) means the parent
+	// did not provision after its elevated child did.
+	assert.Equal(t, 4, e.provisionCalls(), "only the elevated child provisions")
 	assert.Contains(t, r.stdout, "Dev Drive "+e.vhdx, "the parent prints the final status")
+	assert.NotContains(t, r.stdout, autoAttachWarning, "the child registered auto-attach")
 
 	// The elevated child performs the work and never elevates again.
-	child := newDDEnv(t, win11)
-	r = child.run(child.initArgs()...)
-	require.Equal(t, ExitOK, r.code, r.stderr)
 	assert.Empty(t, child.elevated)
-	assert.Positive(t, child.provisionCalls())
+	require.Len(t, child.targets, 1)
+	assert.Empty(t, child.targets[0].User)
+}
+
+func TestInitDevDrive_ElevatedChildGetsTheUser(t *testing.T) {
+	notElevated := win11
+	notElevated.Elevated = false
+	e := newDDEnv(t, notElevated)
+	e.user = `CORP\alice`
+	child := e.elevatedChild(nil)
+
+	r := e.run(e.initArgs()...)
+	require.Equal(t, ExitOK, r.code, r.stderr)
+	require.Len(t, e.elevated, 1)
+	assert.Equal(t, e.initArgs("--"+autoAttachUserFlag, `CORP\alice`), e.elevated[0])
+	require.Len(t, child.targets, 1)
+	assert.Equal(t, platform.AutoAttachTarget{
+		WorkDir: filepath.Dir(filepath.Dir(e.cfgPath)),
+		User:    `CORP\alice`,
+	}, child.targets[0], "the task triggers at the logon of the user who ran init")
+}
+
+func TestInitDevDrive_ParentReportsChildAutoAttach(t *testing.T) {
+	notElevated := win11
+	notElevated.Elevated = false
+	e := newDDEnv(t, notElevated)
+	e.elevatedChild(errors.New("register task: access denied"))
+
+	r := e.run(e.initArgs("--json")...)
+	require.Equal(t, ExitOK, r.code, r.stderr)
+	var doc struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.stdout), &doc), r.stdout)
+	assert.Contains(t, doc.Warnings, autoAttachWarning, "read back from devdrive.auto_attach")
+	cfg, err := config.Load(e.cfgPath)
+	require.NoError(t, err)
+	assert.False(t, cfg.DevDrive.AutoAttach)
+}
+
+func TestInitDevDrive_ParentCannotReadBack(t *testing.T) {
+	notElevated := win11
+	notElevated.Elevated = false
+	e := newDDEnv(t, notElevated) // Elevate succeeds but writes nothing
+
+	r := e.run(e.initArgs()...)
+	require.Equal(t, ExitOK, r.code, r.stderr)
+	assert.Contains(t, r.stdout, autoAttachWarning)
+	assert.Contains(t, r.stdout, "cannot read the result back")
 }
 
 func TestInitDevDrive_ElevationFailures(t *testing.T) {
@@ -393,33 +479,41 @@ func (a *fakeAttacher) Disable(context.Context, string) error { return nil }
 
 func TestInitDevDrive_AutoAttachAndLayout(t *testing.T) {
 	tests := []struct {
-		name     string
-		err      error
-		wantAuto bool
+		name       string
+		err        error
+		noAttacher bool
+		wantAuto   bool
+		wantDetail string
 	}{
-		{name: "enabled", wantAuto: true},
-		{name: "undecided", err: errors.New("auto-attach undecided (U-PLAT-5)")},
+		{name: "registered", wantAuto: true},
+		{name: "registration fails", err: errors.New("register task: access denied"), wantDetail: "access denied"},
+		{name: "unavailable", noAttacher: true, wantDetail: platform.ErrUnsupported.Error()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newDDEnv(t, win11)
+			e.aa.err = tt.err
 			ws := filepath.Join(t.TempDir(), "ws")
-			aa := &fakeAttacher{err: tt.err}
 			var out bytes.Buffer
 			deps := e.deps()
 			deps.MkdirAll = nil // ws is a real temp directory
+			if tt.noAttacher {
+				deps.NewAutoAttacher = nil
+			}
 			in := devDriveInit{
-				ios:      IOStreams{Out: &out, Err: &out},
-				deps:     deps,
-				st:       &runState{},
-				layout:   func(string) map[string]string { return map[string]string{"workspace.root": ws} },
-				attacher: aa,
+				ios:    IOStreams{Out: &out, Err: &out},
+				deps:   deps,
+				st:     &runState{},
+				layout: func(string) map[string]string { return map[string]string{"workspace.root": ws} },
 			}
 			require.NoError(t, in.run(context.Background(),
-				initDevDriveOpts{size: "50GB", path: e.vhdx, letter: "X"}))
+				initDevDriveOpts{size: "50GB", path: e.vhdx, letter: "X", attachUser: `CORP\bob`}))
 
-			require.Len(t, aa.specs, 1)
-			assert.Equal(t, "X:", aa.specs[0].Mount)
+			if !tt.noAttacher {
+				require.Len(t, e.aa.specs, 1)
+				assert.Equal(t, "X:", e.aa.specs[0].Mount)
+				assert.Equal(t, `CORP\bob`, e.targets[0].User)
+			}
 			assert.DirExists(t, ws)
 			cfg, err := config.Load(e.cfgPath)
 			require.NoError(t, err)
@@ -429,10 +523,19 @@ func TestInitDevDrive_AutoAttachAndLayout(t *testing.T) {
 				assert.NotContains(t, out.String(), autoAttachWarning)
 			} else {
 				assert.Contains(t, out.String(), autoAttachWarning)
-				assert.Contains(t, out.String(), "U-PLAT-5")
+				assert.Contains(t, out.String(), "auto-attach: ")
+				assert.Contains(t, out.String(), tt.wantDetail)
 			}
 		})
 	}
+}
+
+func TestInit_AutoAttachUserFlagIsHidden(t *testing.T) {
+	cmd, _, err := newTree().Find([]string{"init"})
+	require.NoError(t, err)
+	f := cmd.Flags().Lookup(autoAttachUserFlag)
+	require.NotNil(t, f)
+	assert.True(t, f.Hidden)
 }
 
 func TestDevDriveLayout(t *testing.T) {

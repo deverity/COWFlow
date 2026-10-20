@@ -47,20 +47,18 @@ func newInitCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 			if !f.Changed("devdrive") || f.Changed("provider") || f.Changed("conventions") {
 				return &ExitError{Code: exitNotImplemented, Err: errNotImplemented}
 			}
-			in := devDriveInit{
-				ios:    ios,
-				deps:   deps,
-				st:     st,
-				layout: devdriveLayout,
-				// PENDING SPEC-GAPS U-PLAT-5: Enable reports
-				// ErrAutoAttachUndecided until the mechanism is decided.
-				attacher: platform.NewAutoAttacher(),
-			}
+			in := devDriveInit{ios: ios, deps: deps, st: st, layout: devdriveLayout}
 			return in.run(cmd.Context(), o)
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&o.size, "devdrive", "", "provision a Dev Drive VHDX of this size (e.g. 50GB)")
+	// Internal: set by the non-elevated init on its elevated child, which may
+	// run under other credentials, so the auto-attach task triggers at the
+	// logon of the user who ran init (SPEC-GAPS U-PLAT-5). platform
+	// validates the DOMAIN\user form.
+	f.StringVar(&o.attachUser, autoAttachUserFlag, "", "user whose logon attaches the Dev Drive (set internally)")
+	_ = f.MarkHidden(autoAttachUserFlag) // fails only for an undefined flag; it is defined just above
 	// Fixed defaults (SPEC-GAPS U-PLAT-9): nothing is chosen automatically;
 	// a taken letter or an existing file is a conflict naming the flag.
 	f.StringVar(&o.path, "path", defaultVHDXPath, "VHDX file path for --devdrive")
@@ -72,18 +70,22 @@ func newInitCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 	return cmd
 }
 
+// autoAttachUserFlag is the hidden flag that carries the user who ran init
+// to the elevated child.
+const autoAttachUserFlag = "auto-attach-user"
+
 // initDevDriveOpts are the flags of `init --devdrive`.
 type initDevDriveOpts struct {
 	size, path, letter string
+	attachUser         string // DOMAIN\user who ran init; "" in a direct run
 }
 
 // devDriveInit runs `init --devdrive` (SCOPE.md §6.4 steps 1-7).
 type devDriveInit struct {
-	ios      IOStreams
-	deps     Deps
-	st       *runState
-	layout   func(mount string) map[string]string
-	attacher platform.AutoAttacher // nil: auto-attach not available
+	ios    IOStreams
+	deps   Deps
+	st     *runState
+	layout func(mount string) map[string]string
 }
 
 // initDevDriveResult is the --json output of `init --devdrive`.
@@ -148,20 +150,47 @@ func (in devDriveInit) run(ctx context.Context, o initDevDriveOpts) error {
 	if !info.Elevated {
 		// Step 1/3: elevate once. The elevated child performs steps 4-7;
 		// its console closes on exit, so the parent prints the result.
-		if err := elevateOnce(ctx, in.ios, in.deps, in.st); err != nil {
+		if err := elevateOnce(ctx, in.ios, in.deps, in.childArgs(o)); err != nil {
 			return err
 		}
 		status, err := in.deps.DevDrive.Status(ctx, spec)
 		if err != nil {
 			return devDriveErr(fmt.Errorf("devdrive status: %w", err))
 		}
-		// PENDING SPEC-GAPS U-PLAT-5: while the mechanism is undecided the
-		// child's auto-attach outcome is always "not configured", so the
-		// parent can report it. Once it is decided, the parent must learn
-		// the real outcome (e.g. from config auto_attach) instead.
-		return in.print(status, cfgPath, in.warnings(spec, platform.ErrAutoAttachUndecided))
+		// The child recorded whether auto-attach was registered in
+		// devdrive.auto_attach; report that real outcome.
+		attached, detail := savedAutoAttach(cfgPath, spec)
+		return in.print(status, cfgPath, in.warnings(spec, attached, detail))
 	}
-	return in.provision(ctx, spec, cfgPath)
+	return in.provision(ctx, spec, cfgPath, o.attachUser)
+}
+
+// childArgs is the command line of the elevated child: the current one,
+// plus the user who ran init unless it already names one. When that user
+// cannot be read, the child falls back to its own token's user.
+func (in devDriveInit) childArgs(o initDevDriveOpts) []string {
+	args := append([]string(nil), in.st.args...)
+	if o.attachUser != "" || in.deps.CurrentUser == nil {
+		return args
+	}
+	u, err := in.deps.CurrentUser()
+	if err != nil || u == "" {
+		return args
+	}
+	return append(args, "--"+autoAttachUserFlag, u)
+}
+
+// savedAutoAttach reads devdrive.auto_attach back from the config the
+// elevated child saved. detail explains a failed read.
+func savedAutoAttach(cfgPath string, spec platform.DevDriveSpec) (attached bool, detail string) {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return false, "cannot read the result back: " + err.Error()
+	}
+	if !cfg.DevDrive.Enabled || cfg.DevDrive.Path != spec.VHDXPath {
+		return false, "the elevated process did not record the Dev Drive in " + cfgPath
+	}
+	return cfg.DevDrive.AutoAttach, ""
 }
 
 // checkConflicts fails with exit 3 when the VHDX file exists or the drive
@@ -199,8 +228,9 @@ func letterRootExists(letter string) (bool, error) {
 	return !errors.Is(err, fs.ErrNotExist), nil
 }
 
-// provision runs steps 4-7 in an elevated process.
-func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec, cfgPath string) error {
+// provision runs steps 4-7 in an elevated process. attachUser is the user
+// who ran init ("" for the current token's user).
+func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec, cfgPath, attachUser string) error {
 	// Load (or start) the config before provisioning, so a broken config
 	// fails before any disk is created.
 	cfg, err := loadOrDefault(cfgPath)
@@ -237,12 +267,12 @@ func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec
 		}
 	}
 
-	// Step 5: auto-attach at boot (mechanism PENDING U-PLAT-5) and
-	// registration in [devdrive].
-	aaErr := platform.ErrAutoAttachUndecided
-	if in.attacher != nil {
-		aaErr = in.attacher.Enable(ctx, spec)
-	}
+	// Step 5: auto-attach at boot (a Task Scheduler task running `cowflow
+	// devdrive attach` from the project root at logon of the user who ran
+	// init, SPEC-GAPS U-PLAT-5) and registration in [devdrive].
+	// auto_attach is true only when the registration succeeded; a failure
+	// is a warning with the manual fallback.
+	aaErr := in.enableAutoAttach(ctx, spec, cfgPath, attachUser)
 	cfg.DevDrive = config.DevDrive{
 		Enabled:    true,
 		Path:       spec.VHDXPath,
@@ -253,24 +283,48 @@ func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec
 	if err := config.Save(cfgPath, cfg); err != nil {
 		return provisioned(fmt.Errorf("writing the config failed: %w", err))
 	}
-	return in.print(status, cfgPath, in.warnings(spec, aaErr))
+	detail := ""
+	if aaErr != nil {
+		detail = aaErr.Error()
+	}
+	return in.print(status, cfgPath, in.warnings(spec, aaErr == nil, detail))
 }
 
+// enableAutoAttach registers the auto-attach task. Its working directory is
+// the project root (the directory above .cowflow), from which `devdrive
+// attach` locates config.toml; an empty user means the current token's.
+func (in devDriveInit) enableAutoAttach(ctx context.Context, spec platform.DevDriveSpec, cfgPath, user string) error {
+	if in.deps.NewAutoAttacher == nil {
+		return platform.ErrUnsupported
+	}
+	t := platform.AutoAttachTarget{WorkDir: projectRoot(cfgPath), User: user}
+	return in.deps.NewAutoAttacher(t).Enable(ctx, spec)
+}
+
+// projectRoot is the directory that holds .cowflow/config.toml.
+func projectRoot(cfgPath string) string { return filepath.Dir(filepath.Dir(cfgPath)) }
+
 // warnings lists what the user must know after init: the auto-attach
-// outcome (S0-T17) and the Defender exclusion suggestion (step 7). Whether
-// init must configure the exclusion itself is PENDING SPEC-GAPS C14; it
-// only prints the command.
-func (in devDriveInit) warnings(spec platform.DevDriveSpec, autoAttach error) []string {
+// outcome (detail says why it is not configured, when known) and the
+// Defender exclusion, which init only suggests and never applies
+// (SPEC-GAPS C14).
+func (in devDriveInit) warnings(spec platform.DevDriveSpec, autoAttached bool, detail string) []string {
 	var w []string
-	if autoAttach != nil {
+	if !autoAttached {
 		w = append(w, autoAttachWarning)
-		if !errors.Is(autoAttach, platform.ErrAutoAttachUndecided) {
-			w = append(w, "auto-attach: "+autoAttach.Error())
+		if detail != "" {
+			w = append(w, "auto-attach: "+detail)
 		}
 	}
-	// spec.Mount is a validated drive letter, so the quoting is safe.
-	w = append(w, fmt.Sprintf("Suggested (run as administrator): Add-MpPreference -ExclusionPath '%s\\'", spec.Mount))
+	w = append(w, "Suggested (run as administrator): "+defenderExclusionCmd(spec.Mount))
 	return w
+}
+
+// defenderExclusionCmd is the PowerShell command that excludes the Dev
+// Drive from Defender scans. mount is a validated drive letter ("X:"), so
+// the quoting is safe.
+func defenderExclusionCmd(mount string) string {
+	return fmt.Sprintf("Add-MpPreference -ExclusionPath '%s\\'", mount)
 }
 
 func (in devDriveInit) print(status platform.DevDriveStatus, cfgPath string, warnings []string) error {

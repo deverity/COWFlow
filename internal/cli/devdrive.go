@@ -80,7 +80,7 @@ func devDriveCmd(ios IOStreams, deps Deps, st *runState, use, short string, admi
 			}
 			var status platform.DevDriveStatus
 			if admin && !info.Elevated {
-				if err := elevateOnce(ctx, ios, deps, st); err != nil {
+				if err := elevateOnce(ctx, ios, deps, st.args); err != nil {
 					return err
 				}
 				status, err = deps.DevDrive.Status(ctx, spec)
@@ -144,11 +144,12 @@ func checkDevDriveHost(ctx context.Context, h platform.Host) (platform.OSInfo, e
 	return info, nil
 }
 
-// elevateOnce relaunches the current command line elevated (one UAC prompt)
-// and waits for it. Only a non-elevated process calls it; platform's
+// elevateOnce relaunches cowflow with args (the current command line, plus
+// what the caller hands to the child) elevated, with one UAC prompt, and
+// waits for it. Only a non-elevated process calls it; platform's
 // RunElevated refuses to elevate an elevated process, so elevation cannot
 // loop.
-func elevateOnce(ctx context.Context, ios IOStreams, deps Deps, st *runState) error {
+func elevateOnce(ctx context.Context, ios IOStreams, deps Deps, args []string) error {
 	if deps.Elevate == nil {
 		return errDevDriveNotWired
 	}
@@ -156,7 +157,7 @@ func elevateOnce(ctx context.Context, ios IOStreams, deps Deps, st *runState) er
 	if _, err := fmt.Fprintln(ios.Err, "Requesting administrator rights (one UAC prompt)…"); err != nil {
 		return err
 	}
-	code, err := deps.Elevate(ctx, st.args)
+	code, err := deps.Elevate(ctx, args)
 	if err != nil {
 		return devDriveErr(fmt.Errorf("elevate: %w", err))
 	}

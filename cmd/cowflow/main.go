@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"os/user"
 	"time"
 
 	"github.com/deverity/cowflow/internal/cli"
@@ -41,7 +42,20 @@ func newDeps() cli.Deps {
 		DevDrive:   platform.NewDevDrive(host),
 		Git:        runner,
 		Elevate:    elevate,
+
+		NewAutoAttacher: platform.NewAutoAttacherFor,
+		CurrentUser:     currentUser,
 	}
+}
+
+// currentUser returns the user running cowflow; on Windows os/user reports
+// it as DOMAIN\user without cgo.
+func currentUser() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("current user: %w", err)
+	}
+	return u.Username, nil
 }
 
 // Set at build time via -ldflags "-X main.version=... -X main.commit=... -X main.date=...".

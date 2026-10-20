@@ -33,6 +33,15 @@ type Deps struct {
 	// LetterInUse reports whether a drive letter ("X") is taken; nil means
 	// a probe of its root directory.
 	LetterInUse func(letter string) (bool, error)
+	// NewAutoAttacher returns the Dev Drive auto-attach registrar for t
+	// (platform.NewAutoAttacherFor in production); nil means auto-attach
+	// is unavailable, so tests never register a real scheduled task.
+	NewAutoAttacher func(t platform.AutoAttachTarget) platform.AutoAttacher
+	// CurrentUser returns DOMAIN\user of the person running cowflow. The
+	// non-elevated init hands it to its elevated child, which may run under
+	// other credentials, so the auto-attach task triggers at the right
+	// logon. nil: the child uses its own token's user.
+	CurrentUser func() (string, error)
 }
 
 // runState records what the run learned while cobra parsed the command line.
