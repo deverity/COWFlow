@@ -39,6 +39,10 @@ func (f *fakeOpenStore) CreateTask(context.Context, domain.Task) (domain.Task, e
 	return domain.Task{}, errors.New("unused")
 }
 
+func (f *fakeOpenStore) DeleteTask(context.Context, string, string) error {
+	return errors.New("unused")
+}
+
 func (f *fakeOpenStore) GetTaskBySlug(_ context.Context, _, slug string) (domain.Task, error) {
 	t, ok := f.tasks[slug]
 	if !ok {

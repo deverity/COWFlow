@@ -419,13 +419,13 @@ func TestTaskCreateRetryAfterFailedWorkspace(t *testing.T) {
 	for _, r := range rows {
 		states[r.State]++
 	}
-	assert.Equal(t, map[domain.WorkspaceState]int{domain.WorkspaceFailed: 1, domain.WorkspaceReady: 1}, states,
-		"one task, the failed attempt and the retry")
+	assert.Equal(t, map[domain.WorkspaceState]int{domain.WorkspaceReady: 1}, states,
+		"the failed attempt was removed with its task row")
 }
 
-// A leftover task is reused only for the same request; with other options it
-// stays a conflict rather than silently using the stored paths.
-func TestTaskCreateRetryWithOtherOptionsConflicts(t *testing.T) {
+// The leftover of a failed create is deleted, so a retry with other options
+// is a fresh create, not a conflict.
+func TestTaskCreateRetryWithOtherOptionsAfterFailure(t *testing.T) {
 	e := newTaskEnv(t)
 	e.prov.CreateErr = errors.New("disk on fire")
 	require.NotEqual(t, ExitOK, e.run("auth", "--paths", "src/auth").code)
@@ -433,8 +433,43 @@ func TestTaskCreateRetryWithOtherOptionsConflicts(t *testing.T) {
 	e.prov.CreateErr = nil
 	e.register = false
 	r := e.run("auth", "--paths", "src/other")
-	assert.Equal(t, ExitConflict, r.code, r.stderr)
-	assert.Contains(t, r.stderr, "earlier failed create")
+	require.Equal(t, ExitOK, r.code, r.stderr)
+
+	s := e.openStore()
+	proj, err := s.ProjectByRoot(context.Background(), e.canonRepo())
+	require.NoError(t, err)
+	task, err := s.GetTaskBySlug(context.Background(), proj.ID, "auth")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"src/other"}, task.Paths)
+}
+
+// A pending_mount workspace is resumed by the same command: one task, one
+// workspace, no conflict.
+func TestTaskCreateResumesPendingMount(t *testing.T) {
+	e := newTaskEnv(t)
+	e.cfgText += fmt.Sprintf("\n[devdrive]\nenabled = true\npath = %q\nmount = \"X:\"\nsize_gb = 50\n",
+		filepath.ToSlash(filepath.Join(filepath.Dir(e.root), "dd.vhdx")))
+	first := e.run("auth", "--paths", "src/auth")
+	require.Equal(t, ExitState, first.code, first.stderr)
+
+	e.register = false
+	again := e.run("auth", "--paths", "src/auth")
+	assert.Equal(t, ExitState, again.code, "still not mounted, but not a conflict: "+again.stderr)
+	assert.Contains(t, again.stderr, "volume not mounted")
+
+	s := e.openStore()
+	proj, err := s.ProjectByRoot(context.Background(), e.canonRepo())
+	require.NoError(t, err)
+	task, err := s.GetTaskBySlug(context.Background(), proj.ID, "auth")
+	require.NoError(t, err)
+	rows, err := s.ListWorkspaces(context.Background(), domain.WorkspaceFilter{TaskID: task.ID})
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "the same workspace row was resumed")
+	assert.Equal(t, domain.WorkspacePendingMount, rows[0].State)
+
+	// Other options for a task waiting on its volume are a conflict.
+	other := e.run("auth", "--paths", "src/other")
+	assert.Equal(t, ExitConflict, other.code, other.stderr)
 }
 
 func TestTaskCreateForceBase(t *testing.T) {

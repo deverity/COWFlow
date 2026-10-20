@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"io"
@@ -37,6 +39,9 @@ type TaskStore interface {
 	ProjectByRoot(ctx context.Context, root string) (domain.Project, error)
 	CreateTask(ctx context.Context, t domain.Task) (domain.Task, error)
 	GetTaskBySlug(ctx context.Context, projectID, slug string) (domain.Task, error)
+	// DeleteTask removes a task and its failed workspace rows; it refuses
+	// with store.ErrTaskHasWorkspaces when another workspace row exists.
+	DeleteTask(ctx context.Context, projectID, taskID string) error
 }
 
 // TaskWorkspaces creates the workspace of a task. *workspace.Manager
@@ -234,10 +239,9 @@ func runTaskCreate(ctx context.Context, ios IOStreams, deps Deps, st *runState, 
 		return &ExitError{Code: ExitConflict, Err: fmt.Errorf("branch %q already exists", branch)}
 	}
 
-	opID, err := domain.NewULIDGen(domain.SystemClock{}).New(domain.KindOperation)
-	if err != nil {
-		return &ExitError{Code: exitUnclassified, Err: err}
-	}
+	// A stable op_id: re-running the same `task create` resumes a
+	// pending_mount workspace instead of inserting a second one.
+	opID := createOpID(proj.ID, slug)
 	task, err := createOrReuseTask(ctx, be, domain.Task{
 		ProjectID: proj.ID, Slug: slug, Title: fl.title, Kind: taskKind(cfg, fl.kind),
 		Base: base, BaseSHA: baseSHA, Branch: branch, Paths: paths, Sparse: fl.sparse,
@@ -274,17 +278,26 @@ func runTaskCreate(ctx context.Context, ios IOStreams, deps Deps, st *runState, 
 	})
 }
 
-// createOrReuseTask inserts t, or returns the task row an earlier failed
+// createOpID is the idempotency key of the workspace of task slug in
+// project projectID. It is derived, not random, so that repeating a
+// `task create` whose workspace is pending_mount resumes that workspace
+// (Manager.Create is idempotent by op_id). Shaped like an operation ID.
+func createOpID(projectID, slug string) string {
+	sum := sha256.Sum256([]byte(projectID + "\x00" + slug))
+	return "op_" + crockford.EncodeToString(sum[:16])
+}
+
+var crockford = base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding)
+
+// createOrReuseTask inserts t, or settles the task row an earlier
 // `task create` left behind for the same slug.
 //
-// The task row is written before Manager.Create, which needs its ID; when
-// the Manager then fails (pending mount, no block clone, a Git error) the
-// row stays and would turn every retry into a slug conflict. The store has
-// no way to delete a task (PENDING for AG-STORE: DeleteTask), so the retry is
-// made safe here instead: a row in state created whose workspaces are all
-// failed, and whose fields equal what this call would insert, is the
-// leftover of a failed attempt and is reused. Anything else is a real
-// conflict: a live or destroyed workspace, or different options.
+// The task row is written before Manager.Create, which needs its ID. A row
+// in state created whose workspaces are all failed (or that has none) is the
+// leftover of a failed attempt: it is deleted with store DeleteTask and t is
+// inserted fresh. A row with a pending_mount workspace is resumed when it was
+// made from the same request; with other options it stays a conflict. Any
+// other workspace (ready, creating, destroyed, ...) is a real conflict.
 func createOrReuseTask(ctx context.Context, be TaskBackend, t domain.Task) (domain.Task, error) {
 	created, err := be.Store.CreateTask(ctx, t)
 	if !errors.Is(err, store.ErrConflict) {
@@ -298,16 +311,30 @@ func createOrReuseTask(ctx context.Context, be TaskBackend, t domain.Task) (doma
 	if listErr != nil {
 		return domain.Task{}, fmt.Errorf("check the workspaces of task %q: %w", t.Slug, listErr)
 	}
+	pending := false
 	for _, w := range ws {
-		if w.State != domain.WorkspaceFailed {
+		switch w.State {
+		case domain.WorkspaceFailed:
+		case domain.WorkspacePendingMount:
+			pending = true
+		default:
 			return domain.Task{}, err
 		}
 	}
-	if !sameTaskRequest(old, t) {
-		return domain.Task{}, fmt.Errorf("%w: task %q was left by an earlier failed create with other options; repeat that command line",
-			store.ErrConflict, t.Slug)
+	if pending {
+		if !sameTaskRequest(old, t) {
+			return domain.Task{}, fmt.Errorf("%w: task %q is waiting for its volume with other options; repeat that command line",
+				store.ErrConflict, t.Slug)
+		}
+		return old, nil
 	}
-	return old, nil
+	if derr := be.Store.DeleteTask(ctx, t.ProjectID, old.ID); derr != nil {
+		if errors.Is(derr, store.ErrTaskHasWorkspaces) {
+			return domain.Task{}, err
+		}
+		return domain.Task{}, fmt.Errorf("remove the leftover of task %q: %w", t.Slug, derr)
+	}
+	return be.Store.CreateTask(ctx, t)
 }
 
 // sameTaskRequest reports whether a stored task was created from the same
