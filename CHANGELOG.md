@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/workspace` (Windows): the block-clone primitive for `cow_clone`.
+  It clones a file with `FSCTL_DUPLICATE_EXTENTS_TO_FILE` in cluster-aligned
+  chunks below 4 GiB, after matching the sparse and integrity-stream settings,
+  and keeps the size, modification time and read-only bit. It never copies
+  bytes: NTFS, a second volume or a refused layout returns
+  `ErrCloneUnsupported` and leaves no destination file. Other OSes report
+  `ErrCloneUnsupported` until their primitive lands.
 - `internal/workspace` contract: the `WorkspaceProvider` interface and
   `Capabilities` of SCOPE.md §6.2, `CowKind` (`none|block|virtual` in
   `--json`), workspace spec/status types with an inclusive port range, the
