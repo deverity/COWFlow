@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,14 +52,37 @@ func clusterOf(t testing.TB, dir string) int {
 
 // cloneOrSkip clones src to dst and skips the test when the volume cannot
 // block clone. Even then no destination file may remain (contract rule 5).
+// A ReFS volume named by COWFLOW_TEST_REFS_DIR has the capability, so there
+// an unsupported clone fails the test instead of hiding a broken clone
+// behind a skip.
 func cloneOrSkip(t testing.TB, src, dst string) {
 	t.Helper()
 	err := cloneFile(context.Background(), src, dst)
 	if errors.Is(err, ErrCloneUnsupported) {
 		assert.NoFileExists(t, dst, "an unsupported clone leaves no destination")
+		if onTestReFS(t, dst) {
+			require.NoError(t, err, "COWFLOW_TEST_REFS_DIR is on ReFS, which block clones")
+		}
 		t.Skipf("block clone unsupported in %s: %v", filepath.Dir(dst), err)
 	}
 	require.NoError(t, err)
+}
+
+// onTestReFS reports whether path lies under COWFLOW_TEST_REFS_DIR on a
+// volume that reports ReFS.
+func onTestReFS(t testing.TB, path string) bool {
+	t.Helper()
+	root := os.Getenv("COWFLOW_TEST_REFS_DIR")
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	v, err := platform.VolumeOf(context.Background(), root)
+	require.NoError(t, err)
+	return v.Filesystem == "refs"
 }
 
 func writeRandom(t testing.TB, path string, n int) []byte {

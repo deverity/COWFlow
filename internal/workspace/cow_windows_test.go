@@ -38,6 +38,24 @@ func TestIntegrityBufferLayout(t *testing.T) {
 	var s setIntegrityBuffer
 	assert.Equal(t, uintptr(8), unsafe.Sizeof(s))
 	assert.Equal(t, uintptr(4), unsafe.Offsetof(s.Flags))
+	var sp fileSetSparseBuffer
+	assert.Equal(t, uintptr(1), unsafe.Sizeof(sp))
+}
+
+// A clone of a non-sparse file is not sparse: the attribute that keeps the
+// size change from allocating is cleared once the extents are shared.
+func TestCloneFileNonSparseStaysNonSparse(t *testing.T) {
+	dir := cowTestDir(t)
+	src := filepath.Join(dir, "plain.src")
+	dst := filepath.Join(dir, "plain.dst")
+	want := writeRandom(t, src, 2*clusterOf(t, dir)+5)
+	require.Zero(t, attributes(t, src)&windows.FILE_ATTRIBUTE_SPARSE_FILE)
+
+	cloneOrSkip(t, src, dst)
+	assert.Zero(t, attributes(t, dst)&windows.FILE_ATTRIBUTE_SPARSE_FILE, "the clone matches the non-sparse source")
+	got, err := os.ReadFile(dst) //nolint:gosec // G304: test temp path
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(want, got), "clone content differs from the source")
 }
 
 func TestMapCloneErr(t *testing.T) {

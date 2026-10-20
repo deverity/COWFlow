@@ -124,14 +124,21 @@ func duplicateFile(ctx context.Context, src string, s, d *os.File) error {
 	return nil
 }
 
-// cloneData matches the sparse and integrity settings, sets the size and
-// duplicates the extents of a non-empty file, checking ctx between chunks.
+// cloneData matches the integrity settings, sets the size and duplicates
+// the extents of a non-empty file, checking ctx between chunks.
+//
+// dst is made sparse before its size is set, whatever src is. Extending the
+// end of file of a non-sparse file allocates its clusters; the duplicated
+// extents then replace them and ReFS frees the originals in the background,
+// so a 1 GiB clone transiently cost 1 GiB of free space (and failed on a
+// volume without that much free) although it shares every cluster. A sparse
+// dst allocates nothing when it grows. The IOCTL only requires dst to be
+// sparse when src is; a dst cloned from a non-sparse src gets the attribute
+// cleared again once every cluster is mapped, which allocates nothing.
 func cloneData(ctx context.Context, src string, sh, dh windows.Handle,
 	info *windows.ByHandleFileInformation, size int64, d *os.File) error {
-	if info.FileAttributes&windows.FILE_ATTRIBUTE_SPARSE_FILE != 0 {
-		if err := ioctl(dh, windows.FSCTL_SET_SPARSE, nil, 0, nil, 0); err != nil {
-			return mapCloneErr(src, "set sparse", err)
-		}
+	if err := ioctl(dh, windows.FSCTL_SET_SPARSE, nil, 0, nil, 0); err != nil {
+		return mapCloneErr(src, "set sparse", err)
 	}
 	cluster, err := copyIntegrity(sh, dh)
 	if err != nil {
@@ -162,7 +169,22 @@ func cloneData(ctx context.Context, src string, sh, dh windows.Handle,
 			return mapCloneErr(src, "duplicate extents", err)
 		}
 	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_SPARSE_FILE == 0 {
+		// Not mapped through mapCloneErr: the clone itself succeeded, so a
+		// failure here is never "unsupported".
+		unset := fileSetSparseBuffer{SetSparse: 0}
+		if err := ioctl(dh, windows.FSCTL_SET_SPARSE,
+			unsafe.Pointer(&unset), uint32(unsafe.Sizeof(unset)), nil, 0); err != nil { //nolint:gosec // G103: fixed-size ioctl input buffer
+			return fmt.Errorf("clone %s: clear sparse: %w", src, err)
+		}
+	}
 	return nil
+}
+
+// fileSetSparseBuffer mirrors FILE_SET_SPARSE_BUFFER, the optional input of
+// FSCTL_SET_SPARSE: one BOOLEAN; no input means "set". Layout: 1 byte.
+type fileSetSparseBuffer struct {
+	SetSparse byte
 }
 
 // copyIntegrity gives dst the integrity-stream settings of src and returns

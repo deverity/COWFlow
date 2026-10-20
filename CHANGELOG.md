@@ -340,6 +340,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cleans up when the workspace path is not in canonical form (a Windows 8.3
   short name such as `C:\Users\RUNNER~1`, or a symlinked parent). It used to
   refuse to remove the directory and leave the worktree registered.
+- `internal/workspace` (Windows): a ReFS / Dev Drive block clone no longer
+  allocates the destination's full size before sharing the source's clusters.
+  Growing a non-sparse file allocated its clusters, which ReFS freed only
+  later, so cloning briefly cost the file's size in free space and could fail
+  on a nearly full volume. The destination is grown as a sparse file and the
+  attribute is cleared again for a non-sparse source.
 
 ### Changed
 
