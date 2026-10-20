@@ -38,7 +38,7 @@ func TestRepo_Basics(t *testing.T) {
 
 func TestRepo_OnTmpfsWhenAvailable(t *testing.T) {
 	if runtime.GOOS != "linux" {
-		t.Skip("tmpfs location is Linux-only (SPEC-GAPS U-PLAT-8)")
+		t.Skip("tmpfs location is Linux-only by design")
 	}
 	if fi, err := os.Stat("/dev/shm"); err != nil || !fi.IsDir() {
 		t.Skip("/dev/shm not available")

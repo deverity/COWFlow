@@ -45,8 +45,8 @@ type repoConfig struct {
 type RepoOption func(*repoConfig)
 
 // WithDir creates the repository in dir instead of the default location. The
-// caller owns dir's cleanup. It is the seam for SPEC-GAPS U-PLAT-8 (default
-// tmpfs-like location on Windows and macOS).
+// caller owns dir's cleanup. By design (SCOPE.md §23) only Linux defaults to
+// tmpfs; Windows and macOS use t.TempDir().
 func WithDir(dir string) RepoOption { return func(c *repoConfig) { c.dir = dir } }
 
 // WithBranch sets the initial branch (default "develop").
