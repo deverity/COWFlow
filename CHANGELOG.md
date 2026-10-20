@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in one transaction, and refuses with `ErrTaskHasWorkspaces` when any other
   workspace row exists. `UpdateWorkspaceSparsePaths` stores the widened scope
   of a ready workspace (for `ExpandScope`).
+- `cowflow workspace list|inspect|destroy`: list the project's workspaces
+  (destroyed ones are hidden), inspect one as it is now (filesystem, HEAD,
+  dirty state, `logs_dir`) and destroy it. A destroy with unpreserved changes
+  names the files and commits, truncated after ten, and exits 4; `--force`
+  rescues them to `refs/cowflow/rescue/<id>` first. A rescue failure,
+  `pending_cleanup` or `pending_mount` exits 2. There is no prompt.
 - `internal/workspace`: sparse checkout from the task paths in both providers.
   The cone set is the normalized `--paths` plus `contracts`. `git_worktree`
   adds the worktree without checkout, sets the cone and populates it;

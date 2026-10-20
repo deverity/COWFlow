@@ -48,7 +48,7 @@ func openTasks(runner git.Runner) func(context.Context, *config.Config, string) 
 		})
 		return cli.TaskBackend{
 			Store: st, Workspaces: m, Repo: gc,
-			Tasks: st, Lister: m, Golden: m.Golden(),
+			Tasks: st, Lister: m, Admin: m, Golden: m.Golden(),
 			Close: st.Close,
 		}, nil
 	}

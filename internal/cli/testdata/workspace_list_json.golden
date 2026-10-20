@@ -1,0 +1,22 @@
+[
+  {
+    "id": "wks_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    "task_id": "tsk_auth",
+    "provider": "cow_clone",
+    "cow_kind": "block",
+    "filesystem": "refs",
+    "state": "ready",
+    "branch": "feature/auth",
+    "path": "auth"
+  },
+  {
+    "id": "wks_01ARZ3NDEKTSV4RRFFQ69G5FAW",
+    "task_id": "tsk_billing",
+    "provider": "cow_clone",
+    "cow_kind": "block",
+    "filesystem": "refs",
+    "state": "pending_cleanup",
+    "branch": "feature/billing",
+    "path": "billing"
+  }
+]

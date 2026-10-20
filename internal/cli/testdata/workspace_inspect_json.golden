@@ -1,0 +1,31 @@
+{
+  "id": "wks_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "task_id": "tsk_auth",
+  "provider": "cow_clone",
+  "cow_kind": "block",
+  "filesystem": "refs",
+  "path": "auth",
+  "branch": "feature/auth",
+  "base_sha": "3f2c9e1a",
+  "head": "3f2c9e1a",
+  "state": "ready",
+  "ports": {
+    "start": 40000,
+    "end": 40009
+  },
+  "sparse": {
+    "enabled": true,
+    "paths": [
+      "src/auth",
+      "contracts"
+    ]
+  },
+  "dirty": {
+    "uncommitted": [],
+    "unpublished": []
+  },
+  "logs_dir": "",
+  "warnings": [
+    "filesystem is \"ntfs\" now, recorded \"refs\" at create"
+  ]
+}

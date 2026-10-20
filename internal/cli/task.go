@@ -64,7 +64,9 @@ type TaskBackend struct {
 	// Tasks, Lister and Golden serve `open` and `golden`; task create does
 	// not use them. *store.Store, *workspace.Manager and the Manager's
 	// *workspace.GoldenCache implement them.
-	Tasks  TaskLookup
+	Tasks TaskLookup
+	// Admin serves `workspace inspect|destroy`; *workspace.Manager implements it.
+	Admin  WorkspaceAdmin
 	Lister WorkspaceLister
 	Golden GoldenCache
 	Close  func() error

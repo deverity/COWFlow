@@ -34,6 +34,7 @@ func TestOpenTasksWiresCowClone(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = be.Close() })
 
+	assert.Same(t, be.Workspaces, be.Admin, "workspace inspect and destroy use the same Manager")
 	m, ok := be.Workspaces.(*workspace.Manager)
 	require.True(t, ok)
 	_, err = m.Select(context.Background(), workspace.ProviderCowClone)

@@ -35,7 +35,7 @@ func addCommands(root *cobra.Command, ios IOStreams, deps Deps, st *runState) {
 		newExecCmd(),
 		// Index and diagnostics
 		newIndexCmd(),
-		newWorkspaceCmd(),
+		newWorkspaceCmd(ios, deps, st),
 		newGoldenCmd(ios, deps, st),
 		newLogsCmd(),
 		newEventsCmd(),
