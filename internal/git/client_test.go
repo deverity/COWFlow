@@ -248,6 +248,7 @@ func TestValidateCallerEnv(t *testing.T) {
 	abs := filepath.Join(t.TempDir(), "index")
 	require.NoError(t, validateCallerEnv(nil))
 	require.NoError(t, validateCallerEnv([]string{"GIT_INDEX_FILE=" + abs}))
+	require.NoError(t, validateCallerEnv([]string{"GIT_AUTHOR_NAME=A B", "GIT_COMMITTER_EMAIL=a@b"}))
 	for _, env := range [][]string{
 		{"GIT_DIR=" + abs},
 		{"GIT_WORK_TREE=" + abs},
@@ -256,6 +257,10 @@ func TestValidateCallerEnv(t *testing.T) {
 		{"GIT_INDEX_FILE"},
 		{"GIT_INDEX_FILE=" + abs + "\x00"},
 		{"PATH=/bin"},
+		{"GIT_AUTHOR_DATE=2020-01-01"},
+		{"GIT_AUTHOR_NAME="},
+		{"GIT_COMMITTER_EMAIL=a\nb"},
+		{"GIT_AUTHOR_EMAIL=a\x00b"},
 	} {
 		assert.Error(t, validateCallerEnv(env), "%q", env)
 	}
