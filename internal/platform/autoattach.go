@@ -21,12 +21,6 @@ import (
 // autoattach_windows.go. Other OSes report ErrUnsupported
 // (autoattach_other.go).
 
-// ErrAutoAttachUndecided is a temporary alias of ErrUnsupported, kept only
-// so internal/cli compiles until it drops its last reference; the alias is
-// removed afterwards. The auto-attach mechanism is decided (SPEC-GAPS
-// U-PLAT-5): new code checks ErrUnsupported or the error Enable returns.
-var ErrAutoAttachUndecided = ErrUnsupported
-
 const (
 	// autoAttachTaskFolder is the Task Scheduler folder of every COWFlow
 	// task. The scripts carry it as fixed text.
