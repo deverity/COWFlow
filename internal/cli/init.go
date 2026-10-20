@@ -25,6 +25,12 @@ const minDevDriveSize = 50 << 30
 // A:/B: are reserved.
 var driveLetter = regexp.MustCompile(`^[D-Za-z]$`)
 
+// Defaults of `init --devdrive` (SCOPE.md §6.4 step 4).
+const (
+	defaultVHDXPath = `C:\cf\cowflow.vhdx`
+	defaultLetter   = "X"
+)
+
 // autoAttachWarning is printed while attach-at-boot is not configured.
 const autoAttachWarning = "auto-attach not configured; run `cowflow devdrive attach` after reboot"
 
@@ -55,10 +61,10 @@ func newInitCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&o.size, "devdrive", "", "provision a Dev Drive VHDX of this size (e.g. 50GB)")
-	// Defaults of --path and --letter: PENDING SPEC-GAPS U-PLAT-9. Until
-	// decided both are required with --devdrive.
-	f.StringVar(&o.path, "path", "", "VHDX file path for --devdrive")
-	f.StringVar(&o.letter, "letter", "", "drive letter for --devdrive")
+	// Fixed defaults (SPEC-GAPS U-PLAT-9): nothing is chosen automatically;
+	// a taken letter or an existing file is a conflict naming the flag.
+	f.StringVar(&o.path, "path", defaultVHDXPath, "VHDX file path for --devdrive")
+	f.StringVar(&o.letter, "letter", defaultLetter, "drive letter for --devdrive (one letter D to Z)")
 	// Exactly these four (SPEC-GAPS U-API-10): "container" is config-only and
 	// valid only in a container-tagged build.
 	f.String("provider", "", "workspace provider: auto|cow_clone|projfs|git_worktree")
@@ -96,10 +102,6 @@ func (o initDevDriveOpts) spec() (platform.DevDriveSpec, error) {
 	if size < minDevDriveSize {
 		return platform.DevDriveSpec{}, usageErr(fmt.Errorf("--devdrive %s is below the Dev Drive minimum of 50GB", o.size))
 	}
-	if o.path == "" || o.letter == "" {
-		return platform.DevDriveSpec{}, usageErr(errors.New(
-			"--path and --letter are required with --devdrive (their defaults are pending SPEC-GAPS U-PLAT-9)"))
-	}
 	if !driveLetter.MatchString(o.letter) {
 		return platform.DevDriveSpec{}, usageErr(fmt.Errorf("--letter %q: must be one drive letter D to Z", o.letter))
 	}
@@ -129,13 +131,18 @@ func (in devDriveInit) run(ctx context.Context, o initDevDriveOpts) error {
 	if err != nil {
 		return err
 	}
-	// PENDING SPEC-GAPS U-API-1 (config.toml location) and U-PLAT-10
-	// (whether SQLite also records the Dev Drive): the registration goes
-	// to the config file at Deps.ConfigPath only. It is resolved before
-	// anything is provisioned so a missing location fails early.
+	// The Dev Drive is registered in [devdrive] of
+	// <project root>/.cowflow/config.toml only, with no SQLite row
+	// (SPEC-GAPS U-API-1, U-PLAT-10). The location is resolved before
+	// anything is provisioned so a failure stops early.
 	cfgPath, err := in.deps.ConfigPath()
 	if err != nil {
 		return &ExitError{Code: ExitState, Err: fmt.Errorf("config location: %w", err)}
+	}
+	// Before the UAC prompt: a taken letter or an existing VHDX is a
+	// conflict the user resolves with a flag.
+	if err := in.checkConflicts(spec); err != nil {
+		return err
 	}
 
 	if !info.Elevated {
@@ -157,13 +164,48 @@ func (in devDriveInit) run(ctx context.Context, o initDevDriveOpts) error {
 	return in.provision(ctx, spec, cfgPath)
 }
 
+// checkConflicts fails with exit 3 when the VHDX file exists or the drive
+// letter is taken (SPEC-GAPS U-PLAT-9): nothing is chosen automatically.
+func (in devDriveInit) checkConflicts(spec platform.DevDriveSpec) error {
+	switch _, err := os.Lstat(spec.VHDXPath); {
+	case err == nil:
+		return &ExitError{Code: ExitConflict, Err: fmt.Errorf(
+			"%s already exists; pass --path to choose another VHDX file", spec.VHDXPath)}
+	case !errors.Is(err, fs.ErrNotExist):
+		return &ExitError{Code: ExitState, Err: fmt.Errorf("vhdx path: %w", err)}
+	}
+	letter := spec.Mount[:1]
+	inUse := in.deps.LetterInUse
+	if inUse == nil {
+		inUse = letterRootExists
+	}
+	taken, err := inUse(letter)
+	if err != nil {
+		return &ExitError{Code: ExitState, Err: fmt.Errorf("drive letter %s: %w", spec.Mount, err)}
+	}
+	if taken {
+		return &ExitError{Code: ExitConflict, Err: fmt.Errorf(
+			"drive letter %s is already in use; pass --letter to choose another one", spec.Mount)}
+	}
+	return nil
+}
+
+// letterRootExists reports whether the root directory of drive letter
+// exists, which on Windows means a volume is mounted there. Any other error
+// (e.g. an empty card reader: "device not ready") still means the letter is
+// held. platform checks the drive letters again before provisioning.
+func letterRootExists(letter string) (bool, error) {
+	_, err := os.Stat(letter + `:\`)
+	return !errors.Is(err, fs.ErrNotExist), nil
+}
+
 // provision runs steps 4-7 in an elevated process.
 func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec, cfgPath string) error {
 	// Load (or start) the config before provisioning, so a broken config
 	// fails before any disk is created.
 	cfg, err := loadOrDefault(cfgPath)
 	if err != nil {
-		return &ExitError{Code: ExitState, Err: err}
+		return configErr(err)
 	}
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o750); err != nil {
 		return &ExitError{Code: ExitState, Err: fmt.Errorf("config directory: %w", err)}
@@ -185,8 +227,12 @@ func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec
 	if err := applyLayout(cfg, layout); err != nil {
 		return provisioned(err)
 	}
+	mkdir := in.deps.MkdirAll
+	if mkdir == nil {
+		mkdir = os.MkdirAll
+	}
 	for _, dir := range sortedValues(layout) {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
+		if err := mkdir(filepath.FromSlash(dir), 0o750); err != nil {
 			return provisioned(fmt.Errorf("creating %s failed: %w", dir, err))
 		}
 	}
@@ -256,28 +302,44 @@ func loadOrDefault(path string) (*config.Config, error) {
 	return config.Load(path)
 }
 
+// configErr maps a config.Load failure to its exit code (SPEC-GAPS
+// U-API-12): a missing or unreadable file is state (2); a file that does
+// not parse or validate is wrong input (1).
+func configErr(err error) error {
+	var pe *fs.PathError
+	if errors.Is(err, fs.ErrNotExist) || errors.As(err, &pe) {
+		return &ExitError{Code: ExitState, Err: err}
+	}
+	return &ExitError{Code: ExitUsage, Err: err}
+}
+
 // devdriveLayout maps the config keys init --devdrive writes inside the
-// volume (SCOPE.md §6.4 step 6) to their directories under mount.
-//
-// PENDING SPEC-GAPS U-API-11 (whether §22's X:/ws, X:/cache/... are
-// defaults or examples), C7 (workspace.golden_root) and C13 (cache.gradle_home,
-// cache.pip_cache): the table stays empty until they are decided, so init
-// writes no workspace.root or cache.* value yet.
+// volume (SCOPE.md §6.4 step 6, §6.7) to their directories under mount,
+// with forward slashes (SPEC-GAPS U-API-11, C7, C13). daemon.state_dir is
+// never part of it: it derives from the config location.
 func devdriveLayout(mount string) map[string]string {
-	_ = mount // the entries will be paths under mount
-	return map[string]string{}
+	return map[string]string{
+		"workspace.root":        mount + "/ws",
+		"workspace.golden_root": mount + "/golden",
+		"cache.pnpm_store":      mount + "/cache/pnpm",
+		"cache.go_modcache":     mount + "/cache/gomod",
+		"cache.go_cache":        mount + "/cache/gobuild",
+		"cache.cargo_target":    mount + "/cache/cargo-target",
+		"cache.gradle_home":     mount + "/cache/gradle",
+		"cache.pip_cache":       mount + "/cache/pip",
+	}
 }
 
 // layoutKeys are the config keys a devdriveLayout entry may set.
 var layoutKeys = map[string]func(*config.Config, string){
 	"workspace.root":        func(c *config.Config, v string) { c.Workspace.Root = v },
-	"workspace.golden_root": func(c *config.Config, v string) { c.Workspace.GoldenRoot = v }, // PENDING C7
+	"workspace.golden_root": func(c *config.Config, v string) { c.Workspace.GoldenRoot = v },
 	"cache.pnpm_store":      func(c *config.Config, v string) { c.Cache.PnpmStore = v },
 	"cache.go_modcache":     func(c *config.Config, v string) { c.Cache.GoModCache = v },
 	"cache.go_cache":        func(c *config.Config, v string) { c.Cache.GoCache = v },
 	"cache.cargo_target":    func(c *config.Config, v string) { c.Cache.CargoTarget = v },
-	"cache.gradle_home":     func(c *config.Config, v string) { c.Cache.GradleHome = v }, // PENDING C13
-	"cache.pip_cache":       func(c *config.Config, v string) { c.Cache.PipCache = v },   // PENDING C13
+	"cache.gradle_home":     func(c *config.Config, v string) { c.Cache.GradleHome = v },
+	"cache.pip_cache":       func(c *config.Config, v string) { c.Cache.PipCache = v },
 }
 
 // applyLayout sets each layout key in c.

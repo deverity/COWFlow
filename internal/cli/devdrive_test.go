@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,8 @@ type ddEnv struct {
 	elevated [][]string // args of each Elevate call
 	elevCode int
 	elevErr  error
+	dirs     []string        // directories init created through Deps.MkdirAll
+	inUse    map[string]bool // drive letters in use
 }
 
 func newDDEnv(t *testing.T, info platform.OSInfo) *ddEnv {
@@ -59,6 +62,11 @@ func (e *ddEnv) deps() Deps {
 			e.elevated = append(e.elevated, append([]string(nil), args...))
 			return e.elevCode, e.elevErr
 		},
+		MkdirAll: func(path string, _ fs.FileMode) error {
+			e.dirs = append(e.dirs, path)
+			return nil
+		},
+		LetterInUse: func(letter string) (bool, error) { return e.inUse[letter], nil },
 	}
 }
 
@@ -99,6 +107,74 @@ func TestInitDevDrive_HappyPath(t *testing.T) {
 	assert.Contains(t, r.stdout, "ReFS")
 	assert.Empty(t, e.elevated)
 	assert.NoFileExists(t, e.cfgPath+".bak", "no previous config to back up")
+
+	// Step 6: the eight layout keys inside the volume, and their dirs.
+	assert.Equal(t, "X:/ws", cfg.Workspace.Root)
+	assert.Equal(t, "X:/golden", cfg.Workspace.GoldenRoot)
+	assert.Equal(t, config.Cache{
+		PnpmStore: "X:/cache/pnpm", GoModCache: "X:/cache/gomod", GoCache: "X:/cache/gobuild",
+		CargoTarget: "X:/cache/cargo-target", GradleHome: "X:/cache/gradle", PipCache: "X:/cache/pip",
+	}, cfg.Cache)
+	assert.Empty(t, cfg.Daemon.StateDir, "state_dir derives from the config location")
+	assert.Len(t, e.dirs, 8)
+	assert.Contains(t, e.dirs, filepath.FromSlash("X:/cache/pip"))
+}
+
+func TestInitDevDrive_FlagDefaults(t *testing.T) {
+	cmd, _, err := newTree().Find([]string{"init"})
+	require.NoError(t, err)
+	assert.Equal(t, `C:\cf\cowflow.vhdx`, cmd.Flags().Lookup("path").DefValue)
+	assert.Equal(t, "X", cmd.Flags().Lookup("letter").DefValue)
+}
+
+func TestInitDevDrive_Conflicts(t *testing.T) {
+	notElevated := win11
+	notElevated.Elevated = false
+
+	t.Run("existing file", func(t *testing.T) {
+		e := newDDEnv(t, notElevated)
+		require.NoError(t, os.MkdirAll(filepath.Dir(e.vhdx), 0o750))
+		require.NoError(t, os.WriteFile(e.vhdx, nil, 0o600))
+		r := e.run(e.initArgs()...)
+		assert.Equal(t, ExitConflict, r.code, r.stderr)
+		assert.Contains(t, r.stderr, "pass --path")
+		assert.Empty(t, e.elevated, "no UAC prompt for a conflict")
+		assert.Empty(t, e.dd.Calls)
+	})
+	t.Run("letter in use", func(t *testing.T) {
+		e := newDDEnv(t, notElevated)
+		e.inUse = map[string]bool{"X": true}
+		r := e.run(e.initArgs()...)
+		assert.Equal(t, ExitConflict, r.code, r.stderr)
+		assert.Contains(t, r.stderr, "pass --letter")
+		assert.Empty(t, e.elevated, "no UAC prompt for a conflict")
+		assert.Empty(t, e.dd.Calls)
+	})
+}
+
+func TestLetterRootExists(t *testing.T) {
+	// No volume is mounted at a letter root on non-Windows hosts; on
+	// Windows, Q: is not guaranteed free, so only the error is checked.
+	_, err := letterRootExists("Q")
+	require.NoError(t, err)
+}
+
+func TestDevDrive_ConfigErrors(t *testing.T) {
+	t.Run("missing config is state", func(t *testing.T) {
+		e := newDDEnv(t, win11)
+		r := e.run("devdrive", "status")
+		assert.Equal(t, ExitState, r.code, r.stderr)
+	})
+	t.Run("invalid config is usage", func(t *testing.T) {
+		e := newDDEnv(t, win11)
+		require.NoError(t, os.MkdirAll(filepath.Dir(e.cfgPath), 0o750))
+		require.NoError(t, os.WriteFile(e.cfgPath, []byte("[nope]\nx = 1\n"), 0o600))
+		r := e.run("devdrive", "status")
+		assert.Equal(t, ExitUsage, r.code, r.stderr)
+		r = e.run(e.initArgs()...)
+		assert.Equal(t, ExitUsage, r.code, r.stderr)
+		assert.Empty(t, e.dd.Calls, "nothing is provisioned over a broken config")
+	})
 }
 
 func TestInitDevDrive_JSON(t *testing.T) {
@@ -252,8 +328,6 @@ func TestInitDevDrive_UsageErrors(t *testing.T) {
 	}{
 		{name: "bad size", args: []string{"init", "--devdrive", "50", "--path", e.vhdx, "--letter", "X"}, want: "invalid size"},
 		{name: "too small", args: []string{"init", "--devdrive", "40GB", "--path", e.vhdx, "--letter", "X"}, want: "minimum"},
-		{name: "missing path", args: []string{"init", "--devdrive", "50GB", "--letter", "X"}, want: "U-PLAT-9"},
-		{name: "missing letter", args: []string{"init", "--devdrive", "50GB", "--path", e.vhdx}, want: "U-PLAT-9"},
 		{name: "system letter", args: []string{"init", "--devdrive", "50GB", "--path", e.vhdx, "--letter", "C"}, want: "--letter"},
 		{name: "letter with colon", args: []string{"init", "--devdrive", "50GB", "--path", e.vhdx, "--letter", "X:"}, want: "--letter"},
 		{name: "not a vhdx", args: []string{"init", "--devdrive", "50GB", "--path", e.vhdx + ".txt", "--letter", "X"}, want: ".vhdx"},
@@ -332,9 +406,11 @@ func TestInitDevDrive_AutoAttachAndLayout(t *testing.T) {
 			ws := filepath.Join(t.TempDir(), "ws")
 			aa := &fakeAttacher{err: tt.err}
 			var out bytes.Buffer
+			deps := e.deps()
+			deps.MkdirAll = nil // ws is a real temp directory
 			in := devDriveInit{
 				ios:      IOStreams{Out: &out, Err: &out},
-				deps:     e.deps(),
+				deps:     deps,
 				st:       &runState{},
 				layout:   func(string) map[string]string { return map[string]string{"workspace.root": ws} },
 				attacher: aa,
@@ -359,8 +435,18 @@ func TestInitDevDrive_AutoAttachAndLayout(t *testing.T) {
 	}
 }
 
-func TestDevDriveLayout_PendingIsEmpty(t *testing.T) {
-	assert.Empty(t, devdriveLayout("X:"), "PENDING U-API-11, C7, C13")
+func TestDevDriveLayout(t *testing.T) {
+	assert.Equal(t, map[string]string{
+		"workspace.root":        "X:/ws",
+		"workspace.golden_root": "X:/golden",
+		"cache.pnpm_store":      "X:/cache/pnpm",
+		"cache.go_modcache":     "X:/cache/gomod",
+		"cache.go_cache":        "X:/cache/gobuild",
+		"cache.cargo_target":    "X:/cache/cargo-target",
+		"cache.gradle_home":     "X:/cache/gradle",
+		"cache.pip_cache":       "X:/cache/pip",
+	}, devdriveLayout("X:"))
+	require.NoError(t, applyLayout(config.Default(), devdriveLayout("Y:")), "every key is settable")
 }
 
 func TestApplyLayout_UnknownKey(t *testing.T) {

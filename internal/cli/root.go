@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 
 	"github.com/spf13/cobra"
 
@@ -25,6 +26,13 @@ type Deps struct {
 	// Elevate relaunches cowflow with args through UAC (one prompt) and
 	// returns the elevated process's exit code.
 	Elevate func(ctx context.Context, args []string) (exitCode int, err error)
+	// MkdirAll creates the Dev Drive layout directories of init; nil means
+	// os.MkdirAll. Tests inject a recorder because the layout lives on the
+	// Dev Drive volume (X:/ws, X:/cache/...).
+	MkdirAll func(path string, perm fs.FileMode) error
+	// LetterInUse reports whether a drive letter ("X") is taken; nil means
+	// a probe of its root directory.
+	LetterInUse func(letter string) (bool, error)
 }
 
 // runState records what the run learned while cobra parsed the command line.

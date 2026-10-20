@@ -26,14 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `platform.AutoAttacher` seam with `NewAutoAttacher`: until the auto-attach
   mechanism is decided (SPEC-GAPS U-PLAT-5), `Enable` returns
   `ErrAutoAttachUndecided` on Windows and `ErrUnsupported` elsewhere.
-- `cowflow init --devdrive <size> --path <file.vhdx> --letter <X>` provisions
-  an ReFS Dev Drive VHDX on Windows 11 22H2+, asking for administrator rights
-  once (one UAC prompt), and records it under `[devdrive]` in the config file
-  only after provisioning succeeds (the previous file is kept as `.bak`). It
-  reports that auto-attach at boot is not configured yet and prints, without
-  applying it, the suggested Defender exclusion command. Other systems get an
-  explicit "COWFlow will use git_worktree" message. `--path` and `--letter`
-  are required until their defaults are decided.
+- `cowflow init --devdrive <size> [--path <file.vhdx>] [--letter <X>]`
+  provisions an ReFS Dev Drive VHDX on Windows 11 22H2+, asking for
+  administrator rights once (one UAC prompt), and records it under
+  `[devdrive]` in the config file only after provisioning succeeds (the
+  previous file is kept as `.bak`). `--path` defaults to
+  `C:\cf\cowflow.vhdx` and `--letter` to `X`; an existing file or a taken
+  letter exits `3` and names the flag to pass. It writes `workspace.root`
+  (`X:/ws`), `workspace.golden_root` (`X:/golden`) and the six `cache.*`
+  keys (`X:/cache/...`) and creates those directories; `daemon.state_dir` is
+  left to its derived default. It reports that auto-attach at boot is not
+  configured yet and prints, without applying it, the suggested Defender
+  exclusion command. Other systems get an explicit "COWFlow will use
+  git_worktree" message. A config file that does not parse or validate exits
+  `1`; a missing one exits `2`.
 - `cowflow devdrive create|attach|detach|status` manage the Dev Drive
   described by `[devdrive]` in the config file; `status` needs no
   administrator rights. All support `--json`.

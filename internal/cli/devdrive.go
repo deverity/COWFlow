@@ -23,14 +23,13 @@ const fallbackMessage = "Dev Drive requires Windows 11; COWFlow will use git_wor
 var (
 	errDevDriveNotWired = errors.New("internal error: Dev Drive dependencies are not wired")
 	errNoDevDrive       = errors.New("no Dev Drive configured: [devdrive] path and mount are not set; " +
-		"run `cowflow init --devdrive <size> --path <file.vhdx> --letter <X>`")
+		"run `cowflow init --devdrive <size>`")
 )
 
 // newDevDriveCmd builds `devdrive create|attach|detach|status` (SCOPE.md §14).
 //
-// PENDING SPEC-GAPS U-PLAT-9: the subcommands take no flags; they read the
-// VHDX path, mount and size from [devdrive] in config.toml (the working
-// proposal of U-PLAT-9).
+// The subcommands take no flags (SPEC-GAPS U-PLAT-9): they read the VHDX
+// path, mount and size from [devdrive] in config.toml.
 func newDevDriveCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 	return group("devdrive", "Manage the Dev Drive VHDX",
 		devDriveCmd(ios, deps, st, "create", "Create the Dev Drive VHDX from [devdrive] in config.toml", true,
@@ -100,9 +99,8 @@ func devDriveCmd(ios IOStreams, deps Deps, st *runState, use, short string, admi
 }
 
 // configuredDevDrive reads the Dev Drive spec from [devdrive] in the config
-// file. Whether SQLite also records the Dev Drive is PENDING SPEC-GAPS
-// U-PLAT-10; the config file location is PENDING U-API-1 (injected through
-// Deps.ConfigPath).
+// file, its only registration (SPEC-GAPS U-PLAT-10), located through
+// Deps.ConfigPath (U-API-1).
 func configuredDevDrive(deps Deps) (platform.DevDriveSpec, error) {
 	path, err := deps.ConfigPath()
 	if err != nil {
@@ -110,7 +108,7 @@ func configuredDevDrive(deps Deps) (platform.DevDriveSpec, error) {
 	}
 	cfg, err := config.Load(path)
 	if err != nil {
-		return platform.DevDriveSpec{}, &ExitError{Code: ExitState, Err: err}
+		return platform.DevDriveSpec{}, configErr(err)
 	}
 	d := cfg.DevDrive
 	if d.Path == "" || d.Mount == "" {
