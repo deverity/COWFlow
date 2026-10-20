@@ -32,17 +32,19 @@ func openTasks(runner git.Runner) func(context.Context, *config.Config, string) 
 		gc := git.NewClient(runner)
 		vols := workspace.PlatformVolumes{}
 		inspector := workspace.NewInspector(st, gc, vols, cfg)
+		destroyer := workspace.NewDestroyer(workspace.DestroyerDeps{
+			Config: cfg, Store: st, Git: gc, Inspector: inspector, Volumes: vols, Logger: logger,
+		})
 		m := workspace.NewManager(workspace.Deps{
 			Config:  cfg,
 			Store:   st,
 			Git:     gc,
 			Volumes: vols,
-			// The Manager builds cow_clone over its golden cache. That
-			// provider's Inspect is not implemented yet (PENDING for
-			// AG-WS: it has no WithInspector), so only git_worktree gets
-			// the shared Inspector.
+			// The Manager builds cow_clone over its golden cache, with its own
+			// Inspector and Destroyer; git_worktree gets the same pair here,
+			// or its `workspace destroy` has no store.
 			CowClone: true,
-			Worktree: workspace.NewWorktreeProvider(gc, vols).WithInspector(inspector),
+			Worktree: workspace.NewWorktreeProvider(gc, vols).WithInspector(inspector).WithDestroyer(destroyer),
 			Env:      workspace.NewEnvFileWriter(cfg, vols, logger),
 			Logger:   logger,
 		})

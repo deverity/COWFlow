@@ -250,11 +250,6 @@ func (e *wsEnv) mustCLI(args ...string) cliResult {
 // imported) over the test's seams: the store at config.DBPath, the git
 // client over the faulty runner and the Manager with both providers sharing
 // one Inspector and one Destroyer.
-//
-// PENDING for AG-CLI: cmd/cowflow gives git_worktree no Destroyer
-// (WithDestroyer), so the shipped binary fails `workspace destroy` of a
-// git_worktree workspace with "manager not configured"; these tests wire
-// the Destroyer the provider contract requires.
 func (e *wsEnv) openTasks() func(context.Context, *config.Config, string) (cli.TaskBackend, error) {
 	// Snapshot the seams now, on the test goroutine.
 	cloner, vols, dev, removeAll, clock, timeout := e.cloner, e.vols, e.devDrive, e.removeAll, e.clock, e.callTimeout
