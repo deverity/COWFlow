@@ -180,12 +180,26 @@ type docOut struct {
 	Warnings []string `json:"warnings"`
 }
 
-var taskIDPattern = regexp.MustCompile(`\b(tsk|wks)_[0-9A-HJKMNP-TV-Z]{26}\b`)
+var (
+	taskIDPattern = regexp.MustCompile(`\b(tsk|wks)_[0-9A-HJKMNP-TV-Z]{26}\b`)
+	// rootedPath is <ROOT> followed by path elements joined by a
+	// backslash, or by the escaped backslash of a JSON string.
+	rootedPath = regexp.MustCompile(`<ROOT>(?:(?:\\\\|\\)[^\\\s"]+)+`)
+)
 
-// normalize replaces the parts of out that differ between runs.
+// normalize replaces the parts of out that differ between runs and between
+// operating systems: the temporary root, the IDs, and the separator of a
+// path below the root (the CLI prints native paths; the golden files use
+// "/").
 func (e *taskEnv) normalize(out string) string {
 	out = strings.ReplaceAll(out, filepath.ToSlash(e.root), "<ROOT>")
+	if jsonRoot := strings.ReplaceAll(e.root, `\`, `\\`); jsonRoot != e.root {
+		out = strings.ReplaceAll(out, jsonRoot, "<ROOT>")
+	}
 	out = strings.ReplaceAll(out, e.root, "<ROOT>")
+	out = rootedPath.ReplaceAllStringFunc(out, func(m string) string {
+		return strings.ReplaceAll(strings.ReplaceAll(m, `\\`, `/`), `\`, `/`)
+	})
 	return taskIDPattern.ReplaceAllString(out, "${1}_ID")
 }
 
