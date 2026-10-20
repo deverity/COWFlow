@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `git.Client`: worktree add/remove/prune/list, commit and branch lookup,
+  compare-and-delete of a branch, golden-tree export into a separate index,
+  index refresh, `read-tree`, per-worktree config, `status --porcelain=v2 -z`
+  and unpublished-commit listing, each a single argv call through the git
+  runner. The runner now takes a per-call `GIT_INDEX_FILE` and stdin, and also
+  strips an inherited `GIT_COMMON_DIR`.
 - Dev Drive auto-attach (`platform.NewAutoAttacher`, `NewAutoAttacherFor`):
   on Windows `Enable` registers the Task Scheduler task
   `\COWFlow\devdrive-attach-<hash of the VHDX path>`, which runs

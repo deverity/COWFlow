@@ -15,6 +15,19 @@ var (
 	// ErrInvalidRefName means a branch or ref name was rejected by
 	// git check-ref-format (§17).
 	ErrInvalidRefName = errors.New("git: invalid ref name")
+	// ErrInvalidArgument means an argument was refused before it reached
+	// git: a relative path, a non-hex SHA, an option-like value, a NUL byte.
+	ErrInvalidArgument = errors.New("git: invalid argument")
+	// ErrUnexpectedOutput means git's output was truncated or unparsable.
+	// Parsers never return partial results with it.
+	ErrUnexpectedOutput = errors.New("git: unexpected output")
+	// ErrOptsUnsupported means an operation needs per-call environment or
+	// stdin and the Runner does not implement OptsRunner.
+	ErrOptsUnsupported = errors.New("git: runner does not support per-call options")
+	// ErrWorktreeConfigUnsafe means extensions.worktreeConfig was not turned
+	// on because core.bare=true or core.worktree is set in the shared
+	// config; git-config(1) requires moving them to config.worktree first.
+	ErrWorktreeConfigUnsafe = errors.New("git: cannot enable extensions.worktreeConfig with core.bare or core.worktree in the shared config")
 )
 
 // Error is returned when git exits non-zero or times out.

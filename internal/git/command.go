@@ -35,12 +35,12 @@ type ExecRunner struct {
 	env     []string
 }
 
-var _ Runner = (*ExecRunner)(nil)
+var _ OptsRunner = (*ExecRunner)(nil)
 
 // strippedEnv lists inherited variables that would point git at another
 // repository or config.
 var strippedEnv = []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
-	"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE",
+	"GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE",
 	"GIT_CEILING_DIRECTORIES", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
 
 // fixedEnv is always set on every call. GIT_TERMINAL_PROMPT=0 is required by
@@ -78,6 +78,16 @@ func NewExecRunner(opts ExecOptions) (*ExecRunner, error) {
 // Run executes git with args, prepending "-C dir" when dir is non-empty. No
 // shell is involved. Stdout is returned even on failure; failures are *Error.
 func (r *ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return r.RunWith(ctx, dir, RunOpts{}, args...)
+}
+
+// RunWith is Run with per-call extra environment and stdin (see RunOpts).
+// An o.Env entry other than GIT_INDEX_FILE=<absolute path> is rejected before
+// git starts.
+func (r *ExecRunner) RunWith(ctx context.Context, dir string, o RunOpts, args ...string) ([]byte, error) {
+	if err := validateCallerEnv(o.Env); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
 	argv := args
@@ -86,6 +96,10 @@ func (r *ExecRunner) Run(ctx context.Context, dir string, args ...string) ([]byt
 	}
 	cmd := exec.CommandContext(ctx, r.path, argv...) //nolint:gosec // G204: fixed git executable, argv slice, no shell
 	cmd.Env = r.env
+	if len(o.Env) > 0 {
+		cmd.Env = append(slices.Clip(r.env), o.Env...)
+	}
+	cmd.Stdin = o.Stdin
 	// Without WaitDelay a grandchild holding stdout open makes Run hang
 	// after the timeout.
 	cmd.WaitDelay = waitDelay

@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ const helperEnv = "COWFLOW_GIT_HELPER"
 //
 //	COWFLOW_GIT_HELPER=env   print the environment, one variable per line
 //	COWFLOW_GIT_HELPER=sleep sleep far longer than any test timeout
+//	COWFLOW_GIT_HELPER=stdin copy stdin to stdout
 func TestMain(m *testing.M) {
 	switch os.Getenv(helperEnv) {
 	case "":
@@ -22,6 +24,11 @@ func TestMain(m *testing.M) {
 	case "env":
 		for _, kv := range os.Environ() {
 			fmt.Println(kv)
+		}
+		os.Exit(0)
+	case "stdin":
+		if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
+			os.Exit(1)
 		}
 		os.Exit(0)
 	case "sleep":
