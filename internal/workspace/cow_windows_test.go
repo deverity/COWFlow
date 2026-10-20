@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
@@ -166,6 +167,14 @@ func TestCloneFileLongPath(t *testing.T) {
 
 // TestCloneFileFreeSpace checks the acceptance criterion: cloning a 1 GiB
 // file on ReFS lowers free space by less than 1 MiB.
+//
+// ReFS publishes free space from allocator state it persists at checkpoints,
+// so GetDiskFreeSpaceEx can lag a write by seconds even after the file is
+// flushed. Sampling right after writing the source therefore charged the
+// source's own 1 GiB to the clone. Every sample is now taken on a settled
+// volume (volume flushed, readings stable), and a control step requires the
+// 1 GiB source write itself to show up first: a measurement that cannot see
+// 1 GiB of data cannot prove that a clone costs none, so the test fails.
 func TestCloneFileFreeSpace(t *testing.T) {
 	if os.Getenv("COWFLOW_TEST_REFS_DIR") == "" {
 		t.Skip("COWFLOW_TEST_REFS_DIR not set")
@@ -173,18 +182,102 @@ func TestCloneFileFreeSpace(t *testing.T) {
 	if testing.Short() {
 		t.Skip("writes 1 GiB")
 	}
+	const size = int64(1 << 30)
 	dir := cowTestDir(t)
+	v, err := platform.VolumeOf(context.Background(), dir)
+	require.NoError(t, err)
+	if v.Filesystem != "refs" {
+		t.Skipf("%s is on %s, not ReFS", dir, v.Filesystem)
+	}
 	src := filepath.Join(dir, "1gib.src")
 	dst := filepath.Join(dir, "1gib.dst")
-	writePattern(t, src, 1<<30)
 
-	before, err := platform.FreeBytes(dir)
-	require.NoError(t, err)
+	base := settledFreeBytes(t, dir, 0)
+	if base < 2*uint64(size) {
+		t.Skipf("%s has %d bytes free; the test needs 2 GiB", v.MountPath, base)
+	}
+	start := time.Now()
+	writePattern(t, src, size)
+	afterSrc := waitFreeAtMost(t, dir, base-uint64(size)*15/16, time.Minute)
+	lag := time.Since(start)
+	srcUsed := int64(base) - int64(afterSrc) //nolint:gosec // G115: free bytes of one volume fit in int64
+	require.GreaterOrEqual(t, srcUsed, size*15/16,
+		"control: writing 1 GiB lowered free space on %s by only %d bytes within a minute, "+
+			"so free space there cannot measure the clone", v.MountPath, srcUsed)
+
 	cloneOrSkip(t, src, dst)
-	after, err := platform.FreeBytes(dir)
+	// Wait longer than the source write took to become visible, so a clone
+	// that did allocate data cannot hide behind the same lag.
+	after := settledFreeBytes(t, dir, 2*lag+time.Second)
+	used := int64(afterSrc) - int64(after) //nolint:gosec // G115: free bytes of one volume fit in int64
+	assert.Less(t, used, int64(1<<20),
+		"a 1 GiB clone used %d bytes (the source write used %d, visible after %s)", used, srcUsed, lag)
+}
+
+// settledFreeBytes waits minWait, flushes the volume holding dir and returns
+// its free bytes once three readings 200 ms apart agree, or the last reading
+// after 30 s.
+func settledFreeBytes(t testing.TB, dir string, minWait time.Duration) uint64 {
+	t.Helper()
+	time.Sleep(minWait)
+	flushVolume(t, dir)
+	deadline := time.Now().Add(30 * time.Second)
+	last, err := platform.FreeBytes(dir)
 	require.NoError(t, err)
-	used := int64(before) - int64(after) //nolint:gosec // G115: free bytes of one volume fit in int64
-	assert.Less(t, used, int64(1<<20), "a 1 GiB clone used %d bytes", used)
+	for same := 0; same < 2 && time.Now().Before(deadline); {
+		time.Sleep(200 * time.Millisecond)
+		cur, err := platform.FreeBytes(dir)
+		require.NoError(t, err)
+		if cur == last {
+			same++
+		} else {
+			same, last = 0, cur
+		}
+	}
+	return last
+}
+
+// waitFreeAtMost returns the settled free bytes of the volume holding dir
+// once they are at most limit, or the last settled reading after timeout.
+func waitFreeAtMost(t testing.TB, dir string, limit uint64, timeout time.Duration) uint64 {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		free := settledFreeBytes(t, dir, 0)
+		if free <= limit || time.Now().After(deadline) {
+			return free
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// flushVolume flushes the volume holding dir, which makes ReFS write a
+// checkpoint and publish its allocator state. Opening a volume handle needs
+// administrator rights; without them the readings settle on their own, and
+// the test only logs that the flush was skipped.
+func flushVolume(t testing.TB, dir string) {
+	t.Helper()
+	p16, err := windows.UTF16PtrFromString(platform.LongPath(dir))
+	require.NoError(t, err)
+	const n = uint32(windows.MAX_PATH + 1)
+	root := make([]uint16, n)
+	require.NoError(t, windows.GetVolumePathName(p16, &root[0], n))
+	name := make([]uint16, n)
+	require.NoError(t, windows.GetVolumeNameForVolumeMountPoint(&root[0], &name[0], n))
+	// \\?\Volume{GUID}\ names the root directory; without the trailing
+	// backslash it names the volume device.
+	dev, err := windows.UTF16PtrFromString(strings.TrimSuffix(windows.UTF16ToString(name), `\`))
+	require.NoError(t, err)
+	h, err := windows.CreateFile(dev, windows.GENERIC_READ|windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, 0, 0)
+	if err != nil {
+		t.Logf("volume flush skipped: %v", err)
+		return
+	}
+	defer func() { _ = windows.CloseHandle(h) }() // the flush result is already reported
+	if err := windows.FlushFileBuffers(h); err != nil {
+		t.Logf("volume flush failed: %v", err)
+	}
 }
 
 // writePattern writes n bytes of a repeating 1 MiB block and syncs.
