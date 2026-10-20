@@ -45,10 +45,6 @@ type DoctorReport struct {
 // doctorCheckTimeout bounds each probe (Guidance: 10 s).
 var doctorCheckTimeout = 10 * time.Second
 
-// exitDoctorFailed is the exit code when a check fails.
-// PENDING SPEC-GAPS U-API-12 — AG-LEAD sets the value at kickoff.
-var exitDoctorFailed = ExitState
-
 func newDoctorCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",

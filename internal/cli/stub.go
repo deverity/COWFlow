@@ -8,10 +8,6 @@ import (
 
 var errNotImplemented = errors.New("not implemented yet")
 
-// exitNotImplemented is the code of a command stub.
-// PENDING SPEC-GAPS U-API-12 — AG-LEAD sets the value at kickoff.
-var exitNotImplemented = exitUnclassified
-
 // stub returns a command whose behavior lands in a later sprint.
 func stub(use, short string, args cobra.PositionalArgs) *cobra.Command {
 	return &cobra.Command{

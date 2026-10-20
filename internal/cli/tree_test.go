@@ -113,7 +113,9 @@ func TestCommandTree_Flags(t *testing.T) {
 func TestCommandTree_MCPRoleHasNoDefault(t *testing.T) {
 	cmd, _, err := newTree().Find([]string{"mcp"})
 	require.NoError(t, err)
-	assert.Empty(t, cmd.Flags().Lookup("role").DefValue) // U-API-6
+	role := cmd.Flags().Lookup("role")
+	assert.Empty(t, role.DefValue) // U-API-6: the session token decides
+	assert.Contains(t, role.Usage, "default: the session token's role, else lead")
 }
 
 func TestCommandTree_JSONEverywhere(t *testing.T) {

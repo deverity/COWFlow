@@ -12,16 +12,6 @@ import (
 	"github.com/deverity/cowflow/internal/platform"
 )
 
-// Exit codes of Dev Drive failures that SCOPE.md §14 does not classify.
-// PENDING SPEC-GAPS U-API-12 — AG-LEAD sets the values at kickoff.
-var (
-	// exitNotElevated: the UAC prompt was declined, or an operation that
-	// needs administrator rights ran without them.
-	exitNotElevated = exitUnclassified
-	// exitUnsupported: no Dev Drive on this OS or Windows build.
-	exitUnsupported = exitUnclassified
-)
-
 // minDevDriveBuild is Windows 11 22H2, the first build with Dev Drive
 // (SCOPE.md §6.4 step 1). platform enforces the same bound.
 const minDevDriveBuild = 22621

@@ -59,7 +59,8 @@ func newInitCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 	// decided both are required with --devdrive.
 	f.StringVar(&o.path, "path", "", "VHDX file path for --devdrive")
 	f.StringVar(&o.letter, "letter", "", "drive letter for --devdrive")
-	// §14 omits "container" here although config allows it: PENDING SPEC-GAPS U-API-10.
+	// Exactly these four (SPEC-GAPS U-API-10): "container" is config-only and
+	// valid only in a container-tagged build.
 	f.String("provider", "", "workspace provider: auto|cow_clone|projfs|git_worktree")
 	f.String("conventions", "", "apply a conventions preset (e.g. gitflow)")
 	return cmd

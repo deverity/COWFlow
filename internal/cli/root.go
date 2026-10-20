@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -14,8 +15,8 @@ import (
 type Deps struct {
 	Version, Commit, Date string
 
-	// ConfigPath returns the path of config.toml. PENDING U-API-1: the
-	// location is undecided, so production wiring uses config.Locate and
+	// ConfigPath returns the path of config.toml: config.Locate in
+	// production (<project root>/.cowflow/config.toml, SPEC-GAPS U-API-1);
 	// tests inject a path.
 	ConfigPath func() (string, error)
 	Host       platform.Host
@@ -37,10 +38,10 @@ type runState struct {
 
 // NewRootCmd builds the cowflow root command.
 func NewRootCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
+	var showVersion bool
 	root := &cobra.Command{
 		Use:           "cowflow",
 		Short:         "Local runtime for teams of AI agents on one Git repository",
-		Version:       fmt.Sprintf("%s (commit %s, built %s)", deps.Version, deps.Commit, deps.Date),
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -49,16 +50,38 @@ func NewRootCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if showVersion {
+				return printVersion(ios, deps, st)
+			}
 			return cmd.Help()
 		},
 	}
 	root.CompletionOptions.DisableDefaultCmd = true // `completion` is not in §14
 	root.PersistentFlags().BoolVar(&st.json, "json", false, "print one JSON document on stdout")
+	// --version only: there is no version subcommand (SPEC-GAPS U-API-13).
+	root.Flags().BoolVarP(&showVersion, "version", "v", false, "print the version and exit")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageErr(err) })
 	root.SetIn(ios.In)
 	root.SetOut(ios.Out)
 	root.SetErr(ios.Err)
 	return root
+}
+
+// versionInfo is the --json document of `cowflow --version`.
+type versionInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+}
+
+// printVersion prints the build information, as one JSON document with
+// --json.
+func printVersion(ios IOStreams, deps Deps, st *runState) error {
+	v := versionInfo{Version: deps.Version, Commit: deps.Commit, Date: deps.Date}
+	return printResult(ios, st.json, v, func(w io.Writer) error {
+		_, err := fmt.Fprintf(w, "cowflow version %s (commit %s, built %s)\n", v.Version, v.Commit, v.Date)
+		return err
+	})
 }
 
 // Execute runs the CLI with args and returns the process exit code.

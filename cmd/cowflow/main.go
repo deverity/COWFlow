@@ -15,10 +15,6 @@ import (
 	"github.com/deverity/cowflow/internal/platform"
 )
 
-// gitTimeout bounds each git call.
-// PENDING U-API-11: scheduler.command_timeout_seconds has no stated default.
-const gitTimeout = 30 * time.Second
-
 // brokenGit is the git.Runner used when the git executable cannot be found,
 // so that commands such as doctor can report it instead of failing to start.
 type brokenGit struct{ err error }
@@ -27,6 +23,9 @@ func (b brokenGit) Run(context.Context, string, ...string) ([]byte, error) { ret
 
 func newDeps() cli.Deps {
 	host := platform.NewHost()
+	// Each call is bounded by the built-in scheduler.command_timeout_seconds
+	// (SPEC-GAPS U-API-11).
+	gitTimeout := time.Duration(config.Default().Scheduler.CommandTimeoutSeconds) * time.Second
 	var runner git.Runner
 	if r, err := git.NewExecRunner(git.ExecOptions{Timeout: gitTimeout}); err != nil {
 		runner = brokenGit{err: err}

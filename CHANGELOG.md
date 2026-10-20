@@ -106,6 +106,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   six-target cross-build, tests on Linux, Windows and macOS, govulncheck,
   gitleaks and DCO.
 - Usage errors exit `1` (was `2`); `cowflow version` is replaced by
-  `cowflow --version` until SPEC-GAPS U-API-13 is decided.
+  `cowflow --version`, and `cowflow --version --json` prints
+  `{"version", "commit", "date"}`. There is no `version` subcommand.
+- Exit codes follow one rule: `1` the command line or config file is wrong,
+  `2` machine or project state prevents the command (including a failing
+  doctor check, a declined UAC prompt, an unsupported OS and a command that
+  is not implemented yet), `3` it collides with something that exists, `4` a
+  COWFlow rule refused it.
+- `cowflow mcp --project <dir>` locates `config.toml` from `<dir>`; `--role`
+  has no fixed default (the session token's role, else `lead`).
 
 [Unreleased]: https://github.com/deverity/COWFlow/commits/develop
