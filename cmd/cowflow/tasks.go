@@ -31,15 +31,18 @@ func openTasks(runner git.Runner) func(context.Context, *config.Config, string) 
 		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 		gc := git.NewClient(runner)
 		vols := workspace.PlatformVolumes{}
+		inspector := workspace.NewInspector(st, gc, vols, cfg)
 		m := workspace.NewManager(workspace.Deps{
 			Config:  cfg,
 			Store:   st,
 			Git:     gc,
 			Volumes: vols,
-			// Cow stays nil until the cow_clone provider (S1-T10) is on
-			// develop; with it unset, auto selects git_worktree and an
-			// explicit cow_clone fails with exit 2.
-			Worktree: workspace.NewWorktreeProvider(gc, vols),
+			// The Manager builds cow_clone over its golden cache. That
+			// provider's Inspect is not implemented yet (PENDING for
+			// AG-WS: it has no WithInspector), so only git_worktree gets
+			// the shared Inspector.
+			CowClone: true,
+			Worktree: workspace.NewWorktreeProvider(gc, vols).WithInspector(inspector),
 			Env:      workspace.NewEnvFileWriter(cfg, vols, logger),
 			Logger:   logger,
 		})
