@@ -323,6 +323,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link` error when a path component is created concurrently; the component is
   re-resolved a bounded number of times, and real dangling links are still
   refused.
+- `cowflow workspace destroy` of a `git_worktree` workspace no longer fails
+  with `destroy has no store` (exit 2): the provider now gets the shared
+  Destroyer.
+- `cowflow workspace destroy` prints `rescued to <ref> (restore with: git
+  cherry-pick -n <ref>)` from the actual rescue result, also when the destroy
+  ends in `pending_cleanup` (on stderr, exit 2), and records the OS user as the
+  audit actor.
+- `cowflow task create` removes the leftover task row of an earlier failed
+  create, so a retry (also with other options) is no longer a slug conflict;
+  a workspace waiting for its volume (`pending_mount`) is resumed by repeating
+  the same command.
+- `cowflow golden list` shows the golden tree ID (`ID` column, `id` in
+  `--json`).
 
 ### Changed
 
