@@ -429,11 +429,11 @@ func TestInitDevDrive_UsageErrors(t *testing.T) {
 	assert.NoFileExists(t, e.cfgPath)
 }
 
-func TestInit_WithoutDevDriveIsStub(t *testing.T) {
+func TestInit_ProviderAndConventionsAreStubs(t *testing.T) {
 	e := newDDEnv(t, win11)
 	for _, args := range [][]string{
-		{"init"},
 		{"init", "--provider", "auto"},
+		{"init", "--conventions", "gitflow"},
 		append(e.initArgs(), "--conventions", "gitflow"),
 	} {
 		r := e.run(args...)

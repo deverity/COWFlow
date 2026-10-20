@@ -42,10 +42,14 @@ func newInitCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			f := cmd.Flags()
-			// .mcp.json, the lead token, --provider and --conventions
-			// belong to S3-E3; only --devdrive is implemented now.
-			if !f.Changed("devdrive") || f.Changed("provider") || f.Changed("conventions") {
+			// .mcp.json, the lead token, .gitignore, --provider and
+			// --conventions belong to S3-E3; init registers the project
+			// (and provisions the Dev Drive with --devdrive) until then.
+			if f.Changed("provider") || f.Changed("conventions") {
 				return &ExitError{Code: exitNotImplemented, Err: errNotImplemented}
+			}
+			if !f.Changed("devdrive") {
+				return runInitProject(cmd.Context(), ios, deps, st)
 			}
 			in := devDriveInit{ios: ios, deps: deps, st: st, layout: devdriveLayout}
 			return in.run(cmd.Context(), o)
@@ -92,6 +96,7 @@ type devDriveInit struct {
 type initDevDriveResult struct {
 	DevDrive      devDriveView `json:"devdrive"`
 	ConfigWritten string       `json:"config_written"`
+	Project       projectView  `json:"project"`
 	Warnings      []string     `json:"warnings"`
 }
 
@@ -160,7 +165,14 @@ func (in devDriveInit) run(ctx context.Context, o initDevDriveOpts) error {
 		// The child recorded whether auto-attach was registered in
 		// devdrive.auto_attach; report that real outcome.
 		attached, detail := savedAutoAttach(cfgPath, spec)
-		return in.print(status, cfgPath, in.warnings(spec, attached, detail))
+		warnings := in.warnings(spec, attached, detail)
+		// The disk exists already, so a registration failure is a warning;
+		// a plain `cowflow init` repeats it.
+		proj, err := registerProject(ctx, cfgPath)
+		if err != nil {
+			warnings = append(warnings, "project not registered: "+err.Error()+"; run `cowflow init`")
+		}
+		return in.print(status, cfgPath, proj, warnings)
 	}
 	return in.provision(ctx, spec, cfgPath, o.attachUser)
 }
@@ -287,7 +299,11 @@ func (in devDriveInit) provision(ctx context.Context, spec platform.DevDriveSpec
 	if aaErr != nil {
 		detail = aaErr.Error()
 	}
-	return in.print(status, cfgPath, in.warnings(spec, aaErr == nil, detail))
+	proj, err := registerProject(ctx, cfgPath)
+	if err != nil {
+		return provisioned(fmt.Errorf("registering the project failed: %w", err))
+	}
+	return in.print(status, cfgPath, proj, in.warnings(spec, aaErr == nil, detail))
 }
 
 // enableAutoAttach registers the auto-attach task. Its working directory is
@@ -327,14 +343,19 @@ func defenderExclusionCmd(mount string) string {
 	return fmt.Sprintf("Add-MpPreference -ExclusionPath '%s\\'", mount)
 }
 
-func (in devDriveInit) print(status platform.DevDriveStatus, cfgPath string, warnings []string) error {
-	res := initDevDriveResult{DevDrive: newDevDriveView(status), ConfigWritten: cfgPath, Warnings: warnings}
+func (in devDriveInit) print(status platform.DevDriveStatus, cfgPath string, proj projectView, warnings []string) error {
+	res := initDevDriveResult{DevDrive: newDevDriveView(status), ConfigWritten: cfgPath, Project: proj, Warnings: warnings}
 	return printResult(in.ios, in.st.json, res, func(w io.Writer) error {
 		if err := writeDevDriveStatus(w, res.DevDrive); err != nil {
 			return err
 		}
 		if _, err := fmt.Fprintf(w, "Config written: %s\n", res.ConfigWritten); err != nil {
 			return err
+		}
+		if res.Project.ID != "" {
+			if _, err := fmt.Fprintf(w, "Project: %s (%s)\n", res.Project.Name, res.Project.ID); err != nil {
+				return err
+			}
 		}
 		for _, s := range res.Warnings {
 			if _, err := fmt.Fprintln(w, s); err != nil {
