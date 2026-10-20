@@ -61,7 +61,21 @@ func resolveExisting(p string, eval func(string) (string, error)) (string, error
 			return "", fmt.Errorf("resolve %q: %w", cur, err)
 		}
 		if _, lerr := os.Lstat(cur); lerr == nil {
-			return "", fmt.Errorf("resolve %q: dangling link: %w", cur, err)
+			// cur exists although eval said it does not: either a real
+			// dangling link, or it was created between the two calls.
+			// Re-resolve a bounded number of times; only a link that stays
+			// unresolvable is refused.
+			again, rerr := reEval(cur, eval)
+			if rerr != nil {
+				return "", rerr
+			}
+			if again == "" {
+				continue // vanished again: re-examine this component
+			}
+			for i := len(rest) - 1; i >= 0; i-- {
+				again = filepath.Join(again, rest[i])
+			}
+			return again, nil
 		} else if !errors.Is(lerr, fs.ErrNotExist) {
 			return "", fmt.Errorf("resolve %q: %w", cur, lerr)
 		}
@@ -72,6 +86,34 @@ func resolveExisting(p string, eval func(string) (string, error)) (string, error
 		rest = append(rest, filepath.Base(cur))
 		cur = parent
 	}
+}
+
+// resolveRetries bounds how often a component that appears or disappears
+// concurrently is re-examined before it is treated as a dangling link.
+const resolveRetries = 5
+
+// reEval re-resolves cur, which Lstat reported as existing right after eval
+// reported it missing. It returns the resolved path, "" when cur vanished
+// again (the caller re-examines it), or an error for a link that stays
+// unresolvable after resolveRetries attempts.
+func reEval(cur string, eval func(string) (string, error)) (string, error) {
+	var last error
+	for range resolveRetries {
+		resolved, err := eval(cur)
+		if err == nil {
+			return resolved, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("resolve %q: %w", cur, err)
+		}
+		last = err
+		if _, lerr := os.Lstat(cur); errors.Is(lerr, fs.ErrNotExist) {
+			return "", nil
+		} else if lerr != nil {
+			return "", fmt.Errorf("resolve %q: %w", cur, lerr)
+		}
+	}
+	return "", fmt.Errorf("resolve %q: dangling link: %w", cur, last)
 }
 
 // Confine canonicalizes root and p and returns the canonical p when it is

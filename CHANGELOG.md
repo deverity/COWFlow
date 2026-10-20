@@ -235,6 +235,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/store`: `WithTx` retries `BEGIN IMMEDIATE` on `SQLITE_BUSY` for up
   to another busy timeout, so heavy writer contention no longer surfaces
   `database is locked` to callers (seen on slow Windows CI runners).
+- `internal/platform`: `Canonical` no longer fails with a spurious `dangling
+  link` error when a path component is created concurrently; the component is
+  re-resolved a bounded number of times, and real dangling links are still
+  refused.
 
 ### Changed
 
