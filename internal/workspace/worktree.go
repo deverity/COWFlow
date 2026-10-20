@@ -1,0 +1,182 @@
+package workspace
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/deverity/cowflow/internal/git"
+	"github.com/deverity/cowflow/internal/platform"
+)
+
+// WorktreeName is the provider name of the git_worktree backend.
+const WorktreeName = "git_worktree"
+
+// worktreeCleanupTimeout bounds the compensation of a failed Create, which
+// runs on a context detached from the caller's cancellation.
+const worktreeCleanupTimeout = 30 * time.Second
+
+// WorktreeProvider is the git_worktree backend (SCOPE.md §6.2): a plain
+// `git worktree add`. It is the universal fallback, available on every
+// filesystem, and it is never copy-on-write.
+type WorktreeProvider struct {
+	git  GitOps
+	vols Volumes
+	goos string // runtime.GOOS; a field so the Windows config is testable anywhere
+}
+
+var _ WorkspaceProvider = (*WorktreeProvider)(nil)
+
+// NewWorktreeProvider returns the git_worktree provider over g and v. A nil
+// v means [PlatformVolumes].
+func NewWorktreeProvider(g GitOps, v Volumes) *WorktreeProvider {
+	if v == nil {
+		v = PlatformVolumes{}
+	}
+	return &WorktreeProvider{git: g, vols: v, goos: runtime.GOOS}
+}
+
+// Name returns "git_worktree".
+func (*WorktreeProvider) Name() string { return WorktreeName }
+
+// Capabilities reports what git_worktree delivers under root: no
+// copy-on-write, sparse checkout, no process isolation, no resource limits,
+// no daemon, and the filesystem probed now from root. It never reports
+// block on ReFS: this provider does not clone blocks.
+func (p *WorktreeProvider) Capabilities(ctx context.Context, root string) (Capabilities, error) {
+	vol, err := p.vols.VolumeOf(ctx, root)
+	if err != nil {
+		return Capabilities{}, fmt.Errorf("git_worktree capabilities: %w", err)
+	}
+	return Capabilities{
+		CopyOnWrite:     CowNone,
+		SparseSupported: true,
+		Filesystem:      vol.Filesystem,
+	}, nil
+}
+
+// Create adds a worktree at spec.Path on the new branch spec.Branch at
+// spec.BaseSHA and sets the per-worktree config (SCOPE.md §7). With
+// spec.Sparse.Enabled the checkout is skipped; the sparse set is applied by
+// the sparse step (S1-T12).
+//
+// spec.Path must not exist; an existing path is [ErrPathExists] and is never
+// touched. An existing branch is [ErrBranchExists]. Any other failure removes
+// what this call created (the worktree, the directory, the admin entry) on a
+// detached context before returning; the task branch is the Manager's to
+// delete.
+func (p *WorktreeProvider) Create(ctx context.Context, spec WorkspaceSpec) (_ *Workspace, err error) {
+	if _, serr := os.Lstat(spec.Path); serr == nil {
+		return nil, fmt.Errorf("%w: %s", ErrPathExists, spec.Path)
+	} else if !errors.Is(serr, fs.ErrNotExist) {
+		return nil, fmt.Errorf("git_worktree create: %w", serr)
+	}
+	caps, err := p.Capabilities(ctx, filepath.Dir(spec.Path))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, p.compensate(ctx, spec.RepoDir, spec.Path))
+		}
+	}()
+	err = p.git.WorktreeAdd(ctx, spec.RepoDir, spec.Path, git.WorktreeAddOptions{
+		NewBranch: spec.Branch, Commitish: spec.BaseSHA, NoCheckout: spec.Sparse.Enabled,
+	})
+	if err != nil {
+		if branchExists(err) {
+			return nil, fmt.Errorf("%w: %q: %w", ErrBranchExists, spec.Branch, err)
+		}
+		return nil, fmt.Errorf("git_worktree create: %w", err)
+	}
+	if err = p.configure(ctx, spec.Path); err != nil {
+		return nil, err
+	}
+	return &Workspace{
+		ID: spec.ID, ProjectID: spec.ProjectID, TaskID: spec.TaskID, SessionID: spec.SessionID,
+		Provider: WorktreeName, Path: spec.Path, Branch: spec.Branch, BaseSHA: spec.BaseSHA,
+		Caps:   caps,
+		Sparse: SparseSpec{Enabled: spec.Sparse.Enabled, Paths: append([]string(nil), spec.Sparse.Paths...)},
+		Ports:  spec.Ports,
+	}, nil
+}
+
+// Inspect is not implemented until the shared inspect (S1-T13) lands.
+func (*WorktreeProvider) Inspect(context.Context, string) (*WorkspaceStatus, error) {
+	return nil, errors.ErrUnsupported
+}
+
+// Destroy is not implemented until the shared destroy (S1-T14) lands.
+func (*WorktreeProvider) Destroy(context.Context, string, DestroyOptions) error {
+	return errors.ErrUnsupported
+}
+
+// configure sets the per-worktree config: line endings are left to
+// .gitattributes (core.autocrlf=false), and on Windows long paths are
+// enabled (SCOPE.md §7).
+func (p *WorktreeProvider) configure(ctx context.Context, path string) error {
+	cfg := [][2]string{{"core.autocrlf", "false"}}
+	if p.goos == "windows" {
+		cfg = append(cfg, [2]string{"core.longpaths", "true"})
+	}
+	for _, kv := range cfg {
+		if err := p.git.ConfigSetWorktree(ctx, path, kv[0], kv[1]); err != nil {
+			return fmt.Errorf("git_worktree create: set %s: %w", kv[0], err)
+		}
+	}
+	return nil
+}
+
+// compensate removes the worktree registration, the confined directory and
+// the stale admin entry of a failed Create, on a context detached from ctx.
+// It only runs for a path that did not exist when Create began. The
+// directory is removed only if it still resolves to itself under its parent.
+func (p *WorktreeProvider) compensate(ctx context.Context, repo, path string) error {
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), worktreeCleanupTimeout)
+	defer cancel()
+	var errs []error
+	wts, err := p.git.WorktreeList(cctx, repo)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("list worktrees: %w", err))
+	}
+	for _, wt := range wts {
+		if samePath(wt.Path, path) {
+			if err := p.git.WorktreeRemove(cctx, repo, path, true); err != nil {
+				errs = append(errs, fmt.Errorf("remove worktree %s: %w", path, err))
+			}
+			break
+		}
+	}
+	parent := filepath.Dir(path)
+	switch c, err := platform.Confine(parent, path); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("refusing to remove %s: %w", path, err))
+	case !samePath(c, path) || samePath(c, parent):
+		errs = append(errs, fmt.Errorf("refusing to remove %s: it resolves to %s", path, c))
+	default:
+		if err := os.RemoveAll(path); err != nil {
+			errs = append(errs, fmt.Errorf("remove %s: %w", path, err))
+		}
+	}
+	if err := p.git.WorktreePrune(cctx, repo); err != nil {
+		errs = append(errs, fmt.Errorf("prune worktrees: %w", err))
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("git_worktree compensation: %w", errors.Join(errs...))
+	}
+	return nil
+}
+
+// branchExists reports whether err is git refusing `worktree add -b` because
+// the branch exists.
+func branchExists(err error) bool {
+	var ge *git.Error
+	return errors.As(err, &ge) && strings.Contains(ge.Stderr, "already exists") &&
+		strings.Contains(ge.Stderr, "branch")
+}

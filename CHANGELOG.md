@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workspace moves to `creating`, in the same transaction as the audit row; it
   refuses them on any other transition. `ResetStaleGoldenInUse` zeroes the
   `in_use` count of golden trees not used since a cutoff, for `golden gc`.
+- `internal/workspace`: the `git_worktree` provider, the universal fallback.
+  It adds a worktree on a new task branch at the base commit (no checkout for
+  a sparse workspace), sets `core.autocrlf=false` per worktree (plus
+  `core.longpaths=true` on Windows), reports no copy-on-write on any
+  filesystem, and removes the worktree, directory and admin entry when a
+  create fails. An existing branch is `ErrBranchExists`; an existing path is
+  never touched. Inspect and destroy follow in later tasks.
 - `internal/workspace` (Windows): the block-clone primitive for `cow_clone`.
   It clones a file with `FSCTL_DUPLICATE_EXTENTS_TO_FILE` in cluster-aligned
   chunks below 4 GiB, after matching the sparse and integrity-stream settings,
