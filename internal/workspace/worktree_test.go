@@ -2,7 +2,6 @@ package workspace_test
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,10 +176,10 @@ func TestWorktreeCreateExistingPathUntouched(t *testing.T) {
 	assert.FileExists(t, keep)
 }
 
-func TestWorktreeDestroyUnsupportedForNow(t *testing.T) {
+func TestWorktreeDestroyWithoutDestroyerFails(t *testing.T) {
 	t.Parallel()
 	p := workspace.NewWorktreeProvider(&workspacetest.FakeGit{}, nil)
-	assert.True(t, errors.Is(p.Destroy(context.Background(), "wks_x", workspace.DestroyOptions{}), errors.ErrUnsupported))
+	require.Error(t, p.Destroy(context.Background(), "wks_x", workspace.DestroyOptions{}), "an error, not a panic")
 }
 
 // assertNoAdminEntry checks that the repository has no worktree besides the

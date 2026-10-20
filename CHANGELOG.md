@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written twice. `Manager.ExpandScope` widens the scope of a ready workspace;
   while HEAD is the base commit, `cow_clone` clones the new files from the
   golden tree first.
+- `internal/workspace`: safe workspace destroy, shared by `git_worktree` and
+  `cow_clone`. It refuses with `UnpreservedError` when the workspace holds
+  uncommitted files or unpublished commits and `--force` is not given, and
+  refuses even with `--force` when the dirty check itself fails. With
+  `--force` it first rescues the changes as a snapshot commit (tracked,
+  staged and untracked files; git-ignored files and `.env.cowflow` are not
+  preserved) at `refs/cowflow/rescue/<workspace_id>`, without touching the
+  worktree or the task branch; a rescue failure (`ErrRescueFailed`) stops the
+  destroy before anything is deleted. The destroy is audited (with
+  `rescue_ref`) before any deletion, then the worktree, its directory, its
+  admin entry and its per-workspace cargo target directory are removed; the
+  task branch and the logs are kept. A removal blocked by an open handle
+  moves the workspace to `pending_cleanup`, emits `workspace.pending_cleanup`
+  with the path, error code and a hint, retries after 250 ms, 1 s and 4 s,
+  then returns `ErrPendingCleanup`; destroying again resumes. The workspace
+  path must be a direct child of `[workspace].root` that resolves to itself.
 - `internal/workspace`: dirty detection and the shared inspect. `Dirty` reads
   Git now and lists uncommitted paths (ignored files and `.env.cowflow` are not
   counted) and commits not under the shared ref namespace; any Git failure is

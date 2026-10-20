@@ -153,7 +153,9 @@ func NewManager(d Deps) *Manager {
 	if m.cow == nil && d.CowClone {
 		m.cow = NewCowCloneProvider(CowCloneDeps{
 			Config: &m.cfg, Git: m.git, Golden: m.Golden(), Volumes: m.vols, Logger: m.log,
-		})
+		}).WithDestroyer(NewDestroyer(DestroyerDeps{
+			Config: &m.cfg, Store: m.store, Git: m.git, Volumes: m.vols, Clock: m.clock, Logger: m.log,
+		}))
 	}
 	return m
 }
@@ -220,8 +222,9 @@ func (m *Manager) Inspect(ctx context.Context, id string) (*WorkspaceStatus, err
 }
 
 // Destroy destroys workspace id through its provider. Destroying a
-// destroyed workspace is a no-op. Dirty checks, rescue and pending_cleanup
-// are the provider's (S1-T13, S1-T14).
+// destroyed workspace is a no-op; a pending_mount one is [ErrPendingMount].
+// Dirty checks, rescue and pending_cleanup are the shared [Destroyer]'s,
+// which every provider delegates to (S1-T14).
 func (m *Manager) Destroy(ctx context.Context, id string, opts DestroyOptions) error {
 	r, err := m.get(ctx, id)
 	if err != nil {
@@ -231,6 +234,8 @@ func (m *Manager) Destroy(ctx context.Context, id string, opts DestroyOptions) e
 	case domain.WorkspaceDestroyed:
 		return nil
 	case domain.WorkspaceReady, domain.WorkspacePendingCleanup:
+	case domain.WorkspacePendingMount:
+		return fmt.Errorf("destroy workspace %s: %w", id, ErrPendingMount)
 	default:
 		return fmt.Errorf("destroy workspace %s: workspace is %s", id, r.State)
 	}

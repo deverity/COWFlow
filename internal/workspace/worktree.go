@@ -30,6 +30,8 @@ type WorktreeProvider struct {
 	vols Volumes
 	goos string // runtime.GOOS; a field so the Windows config is testable anywhere
 	insp *Inspector
+	// destroyer is the shared destroy (S1-T14).
+	destroyer *Destroyer
 }
 
 var _ WorkspaceProvider = (*WorktreeProvider)(nil)
@@ -140,9 +142,18 @@ func (p *WorktreeProvider) Inspect(ctx context.Context, id string) (*WorkspaceSt
 	return p.insp.Inspect(ctx, WorktreeName, CowNone, id)
 }
 
-// Destroy is not implemented until the shared destroy (S1-T14) lands.
-func (*WorktreeProvider) Destroy(context.Context, string, DestroyOptions) error {
-	return errors.ErrUnsupported
+// WithDestroyer sets the shared [Destroyer] Destroy delegates to and returns
+// p. Without one, Destroy fails with a configuration error.
+func (p *WorktreeProvider) WithDestroyer(d *Destroyer) *WorktreeProvider {
+	p.destroyer = d
+	return p
+}
+
+// Destroy destroys the workspace through the shared [Destroyer]: dirty
+// check, rescue with --force, audit, removal, pending_cleanup on a stuck
+// handle. The task branch is kept.
+func (p *WorktreeProvider) Destroy(ctx context.Context, id string, opts DestroyOptions) error {
+	return p.destroyer.Destroy(ctx, WorktreeName, id, opts)
 }
 
 // configure sets the per-worktree config: line endings are left to

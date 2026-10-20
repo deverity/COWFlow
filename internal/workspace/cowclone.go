@@ -65,6 +65,8 @@ type CowCloneProvider struct {
 	seeder IndexSeeder // goldenIndexSeeder; tests may swap it (option A)
 	wt     *WorktreeProvider
 	log    *slog.Logger
+	// destroyer is the shared destroy (S1-T14).
+	destroyer *Destroyer
 
 	mu   sync.Mutex
 	caps map[string]Capabilities // per clean root, for the life of the process
@@ -421,9 +423,18 @@ func (*CowCloneProvider) Inspect(context.Context, string) (*WorkspaceStatus, err
 	return nil, errors.ErrUnsupported
 }
 
-// Destroy is not implemented until the shared destroy (S1-T14) lands.
-func (*CowCloneProvider) Destroy(context.Context, string, DestroyOptions) error {
-	return errors.ErrUnsupported
+// WithDestroyer sets the shared [Destroyer] Destroy delegates to and returns
+// p. Without one, Destroy fails with a configuration error.
+func (p *CowCloneProvider) WithDestroyer(d *Destroyer) *CowCloneProvider {
+	p.destroyer = d
+	return p
+}
+
+// Destroy destroys the workspace through the shared [Destroyer]. A cow_clone
+// workspace is a registered worktree, so its removal is the git_worktree
+// one; the golden tree it was cloned from is never touched.
+func (p *CowCloneProvider) Destroy(ctx context.Context, id string, opts DestroyOptions) error {
+	return p.destroyer.Destroy(ctx, ProviderCowClone, id, opts)
 }
 
 // expandScope widens the sparse scope of w by add. While HEAD is still the
