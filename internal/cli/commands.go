@@ -13,7 +13,7 @@ func addCommands(root *cobra.Command, ios IOStreams, deps Deps, st *runState) {
 		newDaemonCmd(),
 		newDevDriveCmd(ios, deps, st),
 		// Tasks
-		newTaskCmd(),
+		newTaskCmd(ios, deps, st),
 		newRunCmd(),
 		newRunnersCmd(),
 		// Team

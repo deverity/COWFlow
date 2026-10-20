@@ -1,0 +1,7 @@
+task auth created
+  workspace  wks_ID  <ROOT>/auth
+  provider   git_worktree (none, ext4)
+  branch     feature/auth   base develop @ 3f2c9e1
+  sparse     src/auth, contracts
+  ports      40000-40009
+  created in 0.84s

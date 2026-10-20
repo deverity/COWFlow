@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an error, never "clean". `inspect` probes the filesystem at call time, adds
   warnings for a changed filesystem or a missing path, reports `logs_dir`, and
   gives `pending_mount` with `ErrPendingMount` when the volume is not mounted.
+- `cowflow task create <slug>`: creates a task and its workspace without a
+  daemon. It opens the SQLite store, names the branch by the conventions
+  preset (`<kind>/<slug>` under gitflow, `cowflow/<project>/<slug>` otherwise),
+  and calls the workspace manager. Flags: `--base`, `--title`, `--paths`
+  (repeatable or comma-separated), `--sparse` (default true), and under gitflow
+  `--kind` and `--force` (a `--base` other than the kind's own needs it). The
+  result prints as text or as one `--json` document; the provider fallback
+  warning goes to stderr. Exit codes follow SCOPE.md section 14. `--contract`,
+  `--depends`, `--runner`, `--watch` and `--no-contract` fail with exit 1 until
+  they are implemented.
 - `internal/store`: `SetWorkspaceState` records the provider, COW kind,
   filesystem and path the manager finally selected when a `pending_mount`
   workspace moves to `creating`, in the same transaction as the audit row; it

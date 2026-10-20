@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/deverity/cowflow/internal/config"
 	"github.com/deverity/cowflow/internal/git"
 	"github.com/deverity/cowflow/internal/platform"
 )
@@ -47,6 +49,12 @@ type Deps struct {
 	// cannot be read (not elevated, Defender not active). nil: the probe is
 	// unavailable and the check is skipped.
 	DefenderExclusions func(ctx context.Context) ([]string, error)
+	// OpenTasks opens the store and builds the workspace Manager for the
+	// daemonless task commands (SCOPE.md §5.3). It is the only place that
+	// knows the production wiring; nil means task create is unavailable.
+	OpenTasks func(ctx context.Context, cfg *config.Config, cfgPath string) (TaskBackend, error)
+	// Now returns the current time for durations; nil means time.Now.
+	Now func() time.Time
 }
 
 // runState records what the run learned while cobra parsed the command line.

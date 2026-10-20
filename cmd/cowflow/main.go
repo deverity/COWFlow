@@ -42,6 +42,7 @@ func newDeps() cli.Deps {
 		DevDrive:   platform.NewDevDrive(host),
 		Git:        runner,
 		Elevate:    elevate,
+		OpenTasks:  openTasks(runner),
 
 		NewAutoAttacher: platform.NewAutoAttacherFor,
 		CurrentUser:     currentUser,

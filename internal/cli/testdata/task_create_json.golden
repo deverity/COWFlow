@@ -1,0 +1,23 @@
+{
+  "task": {
+    "id": "tsk_ID",
+    "slug": "auth"
+  },
+  "workspace": {
+    "id": "wks_ID",
+    "path": "<ROOT>/auth",
+    "provider": "git_worktree",
+    "cow_kind": "none",
+    "filesystem": "ext4",
+    "branch": "feature/auth",
+    "base_sha": "3f2c9e1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ports": {
+      "start": 40000,
+      "end": 40009
+    }
+  },
+  "warnings": [
+    "no copy-on-write on \"<ROOT>\" (ext4): using git_worktree"
+  ],
+  "duration_ms": 840
+}
