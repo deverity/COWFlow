@@ -21,7 +21,7 @@ func addCommands(root *cobra.Command, ios IOStreams, deps Deps, st *runState) {
 		newAgentsCmd(),
 		newIntentsCmd(),
 		newWhoCmd(),
-		newOpenCmd(),
+		newOpenCmd(ios, deps, st),
 		// Cross-requests
 		newRequestCmd(),
 		// Changes
@@ -36,7 +36,7 @@ func addCommands(root *cobra.Command, ios IOStreams, deps Deps, st *runState) {
 		// Index and diagnostics
 		newIndexCmd(),
 		newWorkspaceCmd(),
-		newGoldenCmd(),
+		newGoldenCmd(ios, deps, st),
 		newLogsCmd(),
 		newEventsCmd(),
 		newBudgetCmd(),

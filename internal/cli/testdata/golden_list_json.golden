@@ -1,0 +1,20 @@
+[
+  {
+    "sha": "aaaa1111",
+    "path": "/ws/golden/aaaa1111",
+    "size_bytes": 1288490189,
+    "files": 60123,
+    "state": "ready",
+    "in_use": 0,
+    "last_used": "2026-03-01T10:00:00Z"
+  },
+  {
+    "sha": "bbbb2222",
+    "path": "/ws/golden/bbbb2222",
+    "size_bytes": 52428800,
+    "files": 2000,
+    "state": "building",
+    "in_use": 1,
+    "last_used": ""
+  }
+]

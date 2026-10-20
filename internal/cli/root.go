@@ -53,6 +53,8 @@ type Deps struct {
 	// daemonless task commands (SCOPE.md §5.3). It is the only place that
 	// knows the production wiring; nil means task create is unavailable.
 	OpenTasks func(ctx context.Context, cfg *config.Config, cfgPath string) (TaskBackend, error)
+	// Editor holds the process seams of `open`; the zero value is production.
+	Editor EditorSeams
 	// Now returns the current time for durations; nil means time.Now.
 	Now func() time.Time
 }

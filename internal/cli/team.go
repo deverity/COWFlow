@@ -23,7 +23,3 @@ func newWhoCmd() *cobra.Command {
 	cmd.Flags().String("path", "", "path to look up")
 	return cmd
 }
-
-func newOpenCmd() *cobra.Command {
-	return stub("open <task>", "Open a task's workspace", cobra.ExactArgs(1))
-}

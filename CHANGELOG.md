@@ -33,6 +33,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the path, error code and a hint, retries after 250 ms, 1 s and 4 s,
   then returns `ErrPendingCleanup`; destroying again resumes. The workspace
   path must be a direct child of `[workspace].root` that resolves to itself.
+- `cowflow open <task>` opens the task's most recent ready workspace in VS Code
+  with the `code` command, started detached from an argument array (no shell).
+  `--json` prints `{"path": ...}` and starts nothing. Without `code` on PATH it
+  prints the path and a hint, exit 0. On Windows, where `code` is a batch shim
+  run through `cmd.exe`, a path outside `^[A-Za-z]:\\[A-Za-z0-9_.\\-]+$` is
+  refused with exit 4 and printed for opening by hand.
+- `cowflow golden list` shows each golden tree (SHA, size, files, state, in-use
+  count, last use); `--json` adds `path` and `size_bytes`. `cowflow golden gc`
+  removes least recently used trees down to `[scheduler].golden_cache_gb` and
+  reports what it removed, the bytes freed and the trees skipped because they
+  are in use.
 - `internal/workspace`: dirty detection and the shared inspect. `Dirty` reads
   Git now and lists uncommitted paths (ignored files and `.env.cowflow` are not
   counted) and commits not under the shared ref namespace; any Git failure is

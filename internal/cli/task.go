@@ -59,7 +59,13 @@ type TaskBackend struct {
 	Store      TaskStore
 	Workspaces TaskWorkspaces
 	Repo       TaskRepo
-	Close      func() error
+	// Tasks, Lister and Golden serve `open` and `golden`; task create does
+	// not use them. *store.Store, *workspace.Manager and the Manager's
+	// *workspace.GoldenCache implement them.
+	Tasks  TaskLookup
+	Lister WorkspaceLister
+	Golden GoldenCache
+	Close  func() error
 }
 
 // unavailableFlags are accepted by the command tree but belong to later

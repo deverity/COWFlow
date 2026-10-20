@@ -43,6 +43,10 @@ func openTasks(runner git.Runner) func(context.Context, *config.Config, string) 
 			Env:      workspace.NewEnvFileWriter(cfg, vols, logger),
 			Logger:   logger,
 		})
-		return cli.TaskBackend{Store: st, Workspaces: m, Repo: gc, Close: st.Close}, nil
+		return cli.TaskBackend{
+			Store: st, Workspaces: m, Repo: gc,
+			Tasks: st, Lister: m, Golden: m.Golden(),
+			Close: st.Close,
+		}, nil
 	}
 }
