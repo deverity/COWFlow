@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -32,7 +34,13 @@ func TestSnapshotPlumbing(t *testing.T) {
 	head := strings.TrimSpace(gitIn(t, r, r.Dir, "rev-parse", "HEAD"))
 
 	// "*.go" is excluded literally: it drops the file of that name only.
-	hostile := []string{"-rf.txt", "a b.txt", "*.go", ":(glob)x", "unié.txt", "[x].txt", "--force"}
+	hostile := []string{"-rf.txt", "a b.txt", "unié.txt", "[x].txt", "--force"}
+	if runtime.GOOS != "windows" {
+		// NTFS and ReFS refuse '*' and ':' in file names, so these two
+		// cannot exist there. The literal "*.go" exclude still runs and
+		// must keep src/main.go.
+		hostile = append(hostile, "*.go", ":(glob)x")
+	}
 	files := append([]string{"new.txt", "ignored.txt", ".env.cowflow", "dir with space/skip me"}, hostile...)
 	for _, f := range files {
 		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(r.Dir, f)), 0o750))
@@ -67,7 +75,8 @@ func TestSnapshotPlumbing(t *testing.T) {
 	assert.Equal(t, head, strings.TrimSpace(gitIn(t, r, r.Dir, "rev-parse", ref+"^")))
 
 	listed := strings.Split(strings.Trim(gitIn(t, r, r.Dir, "ls-tree", "-r", "--name-only", "-z", ref), "\x00"), "\x00")
-	for _, want := range []string{"new.txt", "README.md", "src/main.go", "-rf.txt", "a b.txt", ":(glob)x", "unié.txt", "[x].txt", "--force"} {
+	added := slices.DeleteFunc(slices.Clone(hostile), func(f string) bool { return f == "*.go" })
+	for _, want := range append([]string{"new.txt", "README.md", "src/main.go"}, added...) {
 		assert.Contains(t, listed, want)
 	}
 	for _, not := range []string{"ignored.txt", ".env.cowflow", "dir with space/skip me", "*.go"} {
