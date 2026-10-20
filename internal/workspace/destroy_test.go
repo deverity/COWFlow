@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -424,8 +425,18 @@ func TestDestroyGitFailureRefusesEvenWithForce(t *testing.T) {
 	}
 }
 
-// busy is the error os.RemoveAll returns for a file held open on Unix.
-func busy(p string) error { return &fs.PathError{Op: "unlinkat", Path: p, Err: syscall.EBUSY} }
+// busyErrno and busyCode are the error a removal blocked by an open handle
+// returns on this OS and the code destroy reports for it: EBUSY on Unix,
+// ERROR_SHARING_VIOLATION on Windows, which never returns EBUSY.
+var busyErrno, busyCode = func() (syscall.Errno, string) {
+	if runtime.GOOS == "windows" {
+		return syscall.Errno(32), "ERROR_SHARING_VIOLATION"
+	}
+	return syscall.EBUSY, "EBUSY"
+}()
+
+// busy is the error os.RemoveAll returns for a file held open.
+func busy(p string) error { return &fs.PathError{Op: "unlinkat", Path: p, Err: busyErrno} }
 
 // failWorktreeRemove makes `git worktree remove` fail, as it does when a
 // file in the worktree is held open, so the directory removal runs.
@@ -459,13 +470,13 @@ func TestDestroyStuckHandlePendingCleanup(t *testing.T) {
 
 	r := f.row(t)
 	assert.Equal(t, domain.WorkspacePendingCleanup, r.State, "never a half-deleted ready")
-	assert.Contains(t, r.LastError, "EBUSY")
+	assert.Contains(t, r.LastError, busyCode)
 	evs := f.store.Events()
 	require.Len(t, evs, 1)
 	assert.Equal(t, domain.EventWorkspacePendingCleanup, evs[0].Type)
 	assert.Equal(t, f.ws.ID, evs[0].WorkspaceID)
 	assert.Equal(t, held, evs[0].Payload["path"])
-	assert.Equal(t, "EBUSY", evs[0].Payload["code"])
+	assert.Equal(t, busyCode, evs[0].Payload["code"])
 	assert.Equal(t, "close editors/terminals using this folder", evs[0].Payload["hint"])
 	assert.True(t, f.branchExists(t))
 
