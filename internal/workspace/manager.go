@@ -151,10 +151,12 @@ func NewManager(d Deps) *Manager {
 		m.events = logEvents{log: m.log}
 	}
 	if m.cow == nil && d.CowClone {
+		insp := NewInspector(m.store, m.git, m.vols, &m.cfg)
 		m.cow = NewCowCloneProvider(CowCloneDeps{
 			Config: &m.cfg, Git: m.git, Golden: m.Golden(), Volumes: m.vols, Logger: m.log,
-		}).WithDestroyer(NewDestroyer(DestroyerDeps{
-			Config: &m.cfg, Store: m.store, Git: m.git, Volumes: m.vols, Clock: m.clock, Logger: m.log,
+		}).WithInspector(insp).WithDestroyer(NewDestroyer(DestroyerDeps{
+			Config: &m.cfg, Store: m.store, Git: m.git, Volumes: m.vols, Inspector: insp,
+			Clock: m.clock, Logger: m.log,
 		}))
 	}
 	return m

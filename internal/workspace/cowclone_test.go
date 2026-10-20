@@ -326,11 +326,11 @@ func TestCowCloneCreateWithoutBlockClone(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(root, "a"))
 }
 
-func TestCowCloneNameAndUnimplemented(t *testing.T) {
+func TestCowCloneNameAndMissingCollaborators(t *testing.T) {
 	p := workspace.NewCowCloneProvider(workspace.CowCloneDeps{})
 	assert.Equal(t, workspace.ProviderCowClone, p.Name())
 	_, err := p.Inspect(context.Background(), "wks_1")
-	require.ErrorIs(t, err, errors.ErrUnsupported)
+	require.Error(t, err, "no inspector: an error, not a panic")
 	require.Error(t, p.Destroy(context.Background(), "wks_1", workspace.DestroyOptions{}), "no destroyer: an error, not a panic")
 	_, err = p.Create(context.Background(), workspace.WorkspaceSpec{})
 	require.Error(t, err, "missing dependencies are reported, not a panic")

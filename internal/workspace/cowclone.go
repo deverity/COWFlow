@@ -65,6 +65,8 @@ type CowCloneProvider struct {
 	seeder IndexSeeder // goldenIndexSeeder; tests may swap it (option A)
 	wt     *WorktreeProvider
 	log    *slog.Logger
+	// insp is the shared inspect and dirty check (S1-T13).
+	insp *Inspector
 	// destroyer is the shared destroy (S1-T14).
 	destroyer *Destroyer
 
@@ -418,9 +420,17 @@ func isGitDirName(rel string) bool {
 	return strings.EqualFold(first, ".git")
 }
 
-// Inspect is not implemented until the shared inspect (S1-T13) lands.
-func (*CowCloneProvider) Inspect(context.Context, string) (*WorkspaceStatus, error) {
-	return nil, errors.ErrUnsupported
+// WithInspector sets the shared [Inspector] Inspect delegates to and returns
+// p. Without one, Inspect fails with a configuration error.
+func (p *CowCloneProvider) WithInspector(in *Inspector) *CowCloneProvider {
+	p.insp = in
+	return p
+}
+
+// Inspect reports the workspace through the shared [Inspector]; this
+// provider delivers block-level copy-on-write, so the kind is [CowBlock].
+func (p *CowCloneProvider) Inspect(ctx context.Context, id string) (*WorkspaceStatus, error) {
+	return p.insp.Inspect(ctx, ProviderCowClone, CowBlock, id)
 }
 
 // WithDestroyer sets the shared [Destroyer] Destroy delegates to and returns

@@ -12,6 +12,7 @@ import (
 
 	"github.com/deverity/cowflow/internal/config"
 	"github.com/deverity/cowflow/internal/domain"
+	gitpkg "github.com/deverity/cowflow/internal/git"
 	"github.com/deverity/cowflow/internal/workspace"
 	"github.com/deverity/cowflow/internal/workspace/workspacetest"
 	"github.com/deverity/cowflow/test/harness"
@@ -199,4 +200,53 @@ func trimNL(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// TestDirtyCleanAfterCreateCowClone is the cow_clone case of
+// TestDirtyCleanAfterCreate: a workspace cloned from the golden tree is
+// clean right after create, Inspect reports the block kind through the
+// shared Inspector, and Destroy removes it.
+func TestDirtyCleanAfterCreateCowClone(t *testing.T) {
+	t.Parallel()
+	f := newCCFixture(t, false, nil, nil)
+	ctx := context.Background()
+	cfg := f.cfg
+	cfg.Daemon.StateDir = filepath.Join(t.TempDir(), "state")
+	insp := workspace.NewInspector(f.store, f.client, f.vols, cfg)
+	opts, ok := f.repo.Runner.(gitpkg.OptsRunner)
+	require.True(t, ok)
+	f.prov.WithInspector(insp).WithDestroyer(workspace.NewDestroyer(workspace.DestroyerDeps{
+		Config: cfg, Store: f.store, Git: snapshotClient{Client: f.client, r: opts}, Volumes: f.vols, Inspector: insp,
+	}))
+
+	spec := f.spec("auth")
+	ws, err := f.prov.Create(ctx, spec)
+	require.NoError(t, err)
+	_, err = f.store.InsertWorkspace(ctx, domain.WorkspaceRecord{
+		ID: ws.ID, ProjectID: ws.ProjectID, TaskID: ws.TaskID, Provider: workspace.ProviderCowClone,
+		CowKind: "block", Filesystem: "btrfs", Path: ws.Path, Branch: ws.Branch, BaseSHA: ws.BaseSHA,
+		OpID: spec.OpID,
+	}, 10, 40000)
+	require.NoError(t, err)
+	require.NoError(t, f.store.SetWorkspaceState(ctx, ws.ID, domain.WorkspaceReady, domain.StateChange{}))
+
+	r, err := insp.Dirty(ctx, *ws)
+	require.NoError(t, err)
+	assert.True(t, r.Clean(), "%+v", r)
+
+	st, err := f.prov.Inspect(ctx, ws.ID)
+	require.NoError(t, err)
+	assert.Equal(t, workspace.CowBlock, st.CowKind)
+	assert.Equal(t, f.sha, st.Head)
+	assert.True(t, st.Dirty.Clean(), "%+v", st.Dirty)
+
+	require.NoError(t, os.WriteFile(filepath.Join(ws.Path, "a.txt"), []byte("changed\n"), 0o600))
+	r, err = insp.Dirty(ctx, *ws)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a.txt"}, r.Uncommitted)
+	require.Error(t, f.prov.Destroy(ctx, ws.ID, workspace.DestroyOptions{}), "dirty: refused without force")
+
+	require.NoError(t, f.prov.Destroy(ctx, ws.ID, workspace.DestroyOptions{Force: true}))
+	assert.NoDirExists(t, ws.Path)
+	assert.DirExists(t, f.goldenDir(), "the golden tree is never touched")
 }
