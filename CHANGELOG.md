@@ -60,6 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   warning goes to stderr. Exit codes follow SCOPE.md section 14. `--contract`,
   `--depends`, `--runner`, `--watch` and `--no-contract` fail with exit 1 until
   they are implemented.
+- `cowflow init` without flags now creates `.cowflow/config.toml` with the
+  defaults when it is missing (an existing file is never overwritten), creates
+  the SQLite store and registers the project; running it again changes
+  nothing. `init --devdrive` registers the project too. `--provider` and
+  `--conventions` still exit 2 until `.mcp.json` and the lead token land.
+- `cowflow task create` builds the `cow_clone` provider and gives
+  `git_worktree` the shared inspector. A create that fails after the task row
+  was written no longer blocks the retry: the same command line reuses the
+  leftover task, while a live workspace or different options stay a conflict.
 - `internal/store`: `SetWorkspaceState` records the provider, COW kind,
   filesystem and path the manager finally selected when a `pending_mount`
   workspace moves to `creating`, in the same transaction as the audit row; it

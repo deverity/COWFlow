@@ -36,12 +36,14 @@ func newTaskCmd(ios IOStreams, deps Deps, st *runState) *cobra.Command {
 type TaskStore interface {
 	ProjectByRoot(ctx context.Context, root string) (domain.Project, error)
 	CreateTask(ctx context.Context, t domain.Task) (domain.Task, error)
+	GetTaskBySlug(ctx context.Context, projectID, slug string) (domain.Task, error)
 }
 
 // TaskWorkspaces creates the workspace of a task. *workspace.Manager
 // implements it.
 type TaskWorkspaces interface {
 	Create(ctx context.Context, req workspace.CreateRequest) (*workspace.Workspace, workspace.Selection, error)
+	List(ctx context.Context, f workspace.ListFilter) ([]workspace.Workspace, error)
 }
 
 // TaskRepo is the part of the repository client that task create uses to
@@ -234,7 +236,7 @@ func runTaskCreate(ctx context.Context, ios IOStreams, deps Deps, st *runState, 
 	if err != nil {
 		return &ExitError{Code: exitUnclassified, Err: err}
 	}
-	task, err := be.Store.CreateTask(ctx, domain.Task{
+	task, err := createOrReuseTask(ctx, be, domain.Task{
 		ProjectID: proj.ID, Slug: slug, Title: fl.title, Kind: taskKind(cfg, fl.kind),
 		Base: base, BaseSHA: baseSHA, Branch: branch, Paths: paths, Sparse: fl.sparse,
 	})
@@ -268,6 +270,50 @@ func runTaskCreate(ctx context.Context, ios IOStreams, deps Deps, st *runState, 
 	return printResult(ios, st.json, doc, func(w io.Writer) error {
 		return writeTaskHuman(w, task, ws, elapsed)
 	})
+}
+
+// createOrReuseTask inserts t, or returns the task row an earlier failed
+// `task create` left behind for the same slug.
+//
+// The task row is written before Manager.Create, which needs its ID; when
+// the Manager then fails (pending mount, no block clone, a Git error) the
+// row stays and would turn every retry into a slug conflict. The store has
+// no way to delete a task (PENDING for AG-STORE: DeleteTask), so the retry is
+// made safe here instead: a row in state created whose workspaces are all
+// failed, and whose fields equal what this call would insert, is the
+// leftover of a failed attempt and is reused. Anything else is a real
+// conflict: a live or destroyed workspace, or different options.
+func createOrReuseTask(ctx context.Context, be TaskBackend, t domain.Task) (domain.Task, error) {
+	created, err := be.Store.CreateTask(ctx, t)
+	if !errors.Is(err, store.ErrConflict) {
+		return created, err
+	}
+	old, getErr := be.Store.GetTaskBySlug(ctx, t.ProjectID, t.Slug)
+	if getErr != nil || old.State != domain.TaskStateCreated {
+		return domain.Task{}, err // report the original conflict
+	}
+	ws, listErr := be.Workspaces.List(ctx, workspace.ListFilter{ProjectID: t.ProjectID, TaskID: old.ID})
+	if listErr != nil {
+		return domain.Task{}, fmt.Errorf("check the workspaces of task %q: %w", t.Slug, listErr)
+	}
+	for _, w := range ws {
+		if w.State != domain.WorkspaceFailed {
+			return domain.Task{}, err
+		}
+	}
+	if !sameTaskRequest(old, t) {
+		return domain.Task{}, fmt.Errorf("%w: task %q was left by an earlier failed create with other options; repeat that command line",
+			store.ErrConflict, t.Slug)
+	}
+	return old, nil
+}
+
+// sameTaskRequest reports whether a stored task was created from the same
+// request as t.
+func sameTaskRequest(old, t domain.Task) bool {
+	return old.Title == t.Title && old.Kind == t.Kind && old.Base == t.Base &&
+		old.BaseSHA == t.BaseSHA && old.Branch == t.Branch && old.Sparse == t.Sparse &&
+		slices.Equal(old.Paths, t.Paths)
 }
 
 func now(deps Deps) time.Time {

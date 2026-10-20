@@ -99,6 +99,13 @@ func (e *taskEnv) openStore() *store.Store {
 	return s
 }
 
+func (e *taskEnv) canonRepo() string {
+	e.t.Helper()
+	canon, err := platform.Canonical(e.repo)
+	require.NoError(e.t, err)
+	return canon
+}
+
 func (e *taskEnv) deps() Deps {
 	e.writeConfig()
 	if e.register {
@@ -157,6 +164,10 @@ type failingWorkspaces struct{ err error }
 
 func (f failingWorkspaces) Create(context.Context, workspace.CreateRequest) (*workspace.Workspace, workspace.Selection, error) {
 	return nil, workspace.Selection{}, f.err
+}
+
+func (failingWorkspaces) List(context.Context, workspace.ListFilter) ([]workspace.Workspace, error) {
+	return nil, nil
 }
 
 // docOut is the part of the task create document the tests read back
@@ -381,6 +392,49 @@ func TestTaskCreateSlugExistsExit3(t *testing.T) {
 	r := e.run("auth")
 	assert.Equal(t, ExitConflict, r.code, r.stderr)
 	assert.Contains(t, r.stderr, "already exists")
+}
+
+// A Manager failure after CreateTask leaves the task row; the same command
+// line must work again once the cause is gone.
+func TestTaskCreateRetryAfterFailedWorkspace(t *testing.T) {
+	e := newTaskEnv(t)
+	e.prov.CreateErr = errors.New("disk on fire")
+	first := e.run("auth", "--paths", "src/auth")
+	require.NotEqual(t, ExitOK, first.code)
+	assert.Contains(t, first.stderr, "disk on fire")
+
+	e.prov.CreateErr = nil
+	e.register = false // registered by the first run
+	second := e.run("auth", "--paths", "src/auth", "--json")
+	require.Equal(t, ExitOK, second.code, second.stderr)
+
+	s := e.openStore()
+	proj, err := s.ProjectByRoot(context.Background(), e.canonRepo())
+	require.NoError(t, err)
+	task, err := s.GetTaskBySlug(context.Background(), proj.ID, "auth")
+	require.NoError(t, err)
+	rows, err := s.ListWorkspaces(context.Background(), domain.WorkspaceFilter{TaskID: task.ID})
+	require.NoError(t, err)
+	states := map[domain.WorkspaceState]int{}
+	for _, r := range rows {
+		states[r.State]++
+	}
+	assert.Equal(t, map[domain.WorkspaceState]int{domain.WorkspaceFailed: 1, domain.WorkspaceReady: 1}, states,
+		"one task, the failed attempt and the retry")
+}
+
+// A leftover task is reused only for the same request; with other options it
+// stays a conflict rather than silently using the stored paths.
+func TestTaskCreateRetryWithOtherOptionsConflicts(t *testing.T) {
+	e := newTaskEnv(t)
+	e.prov.CreateErr = errors.New("disk on fire")
+	require.NotEqual(t, ExitOK, e.run("auth", "--paths", "src/auth").code)
+
+	e.prov.CreateErr = nil
+	e.register = false
+	r := e.run("auth", "--paths", "src/other")
+	assert.Equal(t, ExitConflict, r.code, r.stderr)
+	assert.Contains(t, r.stderr, "earlier failed create")
 }
 
 func TestTaskCreateForceBase(t *testing.T) {
