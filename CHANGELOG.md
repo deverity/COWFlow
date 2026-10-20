@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/workspace` contract: the `WorkspaceProvider` interface and
+  `Capabilities` of SCOPE.md §6.2, `CowKind` (`none|block|virtual` in
+  `--json`), workspace spec/status types with an inclusive port range, the
+  sentinel errors and `UnpreservedError` (names at most ten paths), and the
+  consumer-side `GitOps`, `Store`, `Volumes` and `Cloner` seams.
+  `workspacetest` adds test-only fakes: `FakeProvider`, `FakeManager`,
+  `FakeCloner` (byte copy with fault injection), `FakeGit`, `MemStore` and
+  `FakeVolumes`.
 - Store: tasks (minimal), workspaces, golden trees and `audit_log` tables
   (migration 0002). Workspace inserts allocate the lowest free port slot and
   are idempotent by `op_id`; state changes follow the settled workspace state
