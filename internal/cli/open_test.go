@@ -223,7 +223,10 @@ func TestOpenErrors(t *testing.T) {
 	r = e.run("open", "Bad Slug")
 	assert.Equal(t, ExitUsage, r.code)
 
+	// A Unix editor and path: pin GOOS so the Windows cmd.exe shim check
+	// does not refuse "/ws/auth" before the start failure is reached.
 	e.editor = EditorSeams{
+		GOOS:     "linux",
 		LookPath: func(string) (string, error) { return "/usr/bin/code", nil },
 		Start:    func(context.Context, []string) error { return errors.New("boom") },
 	}
