@@ -1,0 +1,133 @@
+name: bench
+
+# Sprint 1 workspace benchmarks (docs/sprints/sprint-1.md S1-T21): 20 workspaces
+# in under 2 s each, incremental disk under 1%, shared cache gain of at least
+# 50%. Manual only: the results are attached to the sprint-closing PR, they do
+# not gate merges. The same tests also run, small and without the large
+# profiles, in the cow-* jobs of ci.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Repository profile for TestPhase1 and TestOQ6 (small, large or monorepo)
+        default: large
+        type: choice
+        options: [small, large, monorepo]
+      large:
+        description: Also run TestAC21 on the large and monorepo profiles (needs about 6 GiB of free space)
+        default: true
+        type: boolean
+      defender_excluded:
+        description: Windows only. Is the volume excluded from Defender real-time scanning? (recorded, never changed)
+        default: unknown
+        type: choice
+        options: [unknown, "true", "false"]
+
+permissions:
+  contents: read
+
+env:
+  CGO_ENABLED: "0"
+  COWFLOW_BENCH_PROFILE: ${{ inputs.profile }}
+  COWFLOW_BENCH_LARGE: ${{ inputs.large && '1' || '' }}
+
+jobs:
+  bench-windows:
+    name: bench-windows (devdrive)
+    runs-on: [self-hosted, win11-devdrive]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The runner's Dev Drive is X:, provisioned by `cowflow init --devdrive`
+      # (S0-E6). The workflow never touches Defender settings.
+      - name: benchmarks
+        shell: pwsh
+        env:
+          COWFLOW_BENCH_ROOT: X:\bench
+          COWFLOW_BENCH_OUT: ${{ runner.temp }}\bench-results
+          COWFLOW_BENCH_DEFENDER_EXCLUDED: ${{ inputs.defender_excluded == 'unknown' && '' || inputs.defender_excluded }}
+        run: |
+          New-Item -ItemType Directory -Force $env:COWFLOW_BENCH_ROOT | Out-Null
+          go test -count=1 -run 'TestPhase1_|TestAC21_|TestAC17_|TestOQ6_' -v -timeout 90m ./test/integration/bench/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: bench-windows-devdrive
+          path: ${{ runner.temp }}\bench-results
+          if-no-files-found: warn
+
+  bench-linux:
+    name: bench-linux (${{ matrix.fs }})
+    strategy:
+      fail-fast: false
+      matrix:
+        fs: [btrfs, xfs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: create ${{ matrix.fs }} loop filesystem
+        env:
+          FS: ${{ matrix.fs }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y btrfs-progs xfsprogs
+          truncate -s 14G "$RUNNER_TEMP/cow.img"
+          if [ "$FS" = btrfs ]; then
+            mkfs.btrfs -q "$RUNNER_TEMP/cow.img"
+          else
+            mkfs.xfs -q -m reflink=1 "$RUNNER_TEMP/cow.img"
+          fi
+          sudo mkdir -p /mnt/cow
+          sudo mount -o loop "$RUNNER_TEMP/cow.img" /mnt/cow
+          sudo chown "$USER" /mnt/cow
+      - name: benchmarks on ${{ matrix.fs }}
+        env:
+          COWFLOW_BENCH_ROOT: /mnt/cow/bench
+          COWFLOW_BENCH_OUT: ${{ runner.temp }}/bench-results
+          TMPDIR: /mnt/cow
+        run: |
+          mkdir -p "$COWFLOW_BENCH_ROOT"
+          go test -count=1 -run 'TestPhase1_|TestAC21_|TestAC17_|TestOQ6_' -v -timeout 90m ./test/integration/bench/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: bench-linux-${{ matrix.fs }}
+          path: ${{ runner.temp }}/bench-results
+          if-no-files-found: warn
+
+  bench-macos:
+    name: bench-macos (apfs)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # A dedicated APFS volume with Spotlight off, so that free space moves
+      # only because of the benchmark.
+      - name: create a dedicated APFS volume
+        run: |
+          hdiutil create -size 14g -fs APFS -volname cowbench -type SPARSE "$RUNNER_TEMP/cowbench"
+          hdiutil attach "$RUNNER_TEMP/cowbench.sparseimage" -mountpoint /Volumes/cowbench
+          sudo mdutil -i off /Volumes/cowbench
+          mkdir -p /Volumes/cowbench/bench
+      - name: benchmarks on APFS
+        env:
+          COWFLOW_BENCH_ROOT: /Volumes/cowbench/bench
+          COWFLOW_BENCH_OUT: ${{ runner.temp }}/bench-results
+        run: go test -count=1 -run 'TestPhase1_|TestAC21_|TestAC17_|TestOQ6_' -v -timeout 90m ./test/integration/bench/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: bench-macos-apfs
+          path: ${{ runner.temp }}/bench-results
+          if-no-files-found: warn

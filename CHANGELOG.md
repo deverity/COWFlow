@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names the files and commits, truncated after ten, and exits 4; `--force`
   rescues them to `refs/cowflow/rescue/<id>` first. A rescue failure,
   `pending_cleanup` or `pending_mount` exits 2. There is no prompt.
+- `test/integration/bench`: Sprint 1 workspace benchmarks and the `bench`
+  workflow (manual; self-hosted Windows Dev Drive, Linux btrfs and XFS, macOS
+  APFS). They measure in-process `Manager.Create` over 20 sequential creates
+  (median of 3 runs, budget 2 s), the incremental disk per workspace over the
+  golden size (budget 1% for a golden tree of at least 1 GiB), the shared
+  Go cache gain (budget: shared at most half of isolated) and the golden tree
+  cost per base commit. Each test writes a result JSON to
+  `COWFLOW_BENCH_OUT`, including the filesystem, the Defender exclusion state
+  (`COWFLOW_BENCH_DEFENDER_EXCLUDED`) and `cowflow task create` wall time.
+  Without a copy-on-write volume (`COWFLOW_BENCH_ROOT`,
+  `COWFLOW_TEST_COW_DIR` or `COWFLOW_TEST_REFS_DIR`) they skip.
 - `internal/workspace`: sparse checkout from the task paths in both providers.
   The cone set is the normalized `--paths` plus `contracts`. `git_worktree`
   adds the worktree without checkout, sets the cone and populates it;
