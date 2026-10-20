@@ -1,5 +1,6 @@
 [
   {
+    "id": "gld_aaaa1111",
     "sha": "aaaa1111",
     "path": "/ws/golden/aaaa1111",
     "size_bytes": 1288490189,
@@ -9,6 +10,7 @@
     "last_used": "2026-03-01T10:00:00Z"
   },
   {
+    "id": "gld_bbbb2222",
     "sha": "bbbb2222",
     "path": "/ws/golden/bbbb2222",
     "size_bytes": 52428800,

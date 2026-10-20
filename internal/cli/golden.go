@@ -57,6 +57,7 @@ func goldenCache(ctx context.Context, deps Deps, command string) (*openedBackend
 
 // goldenDoc is one entry of the golden list --json array.
 type goldenDoc struct {
+	ID       string `json:"id"`
 	SHA      string `json:"sha"`
 	Path     string `json:"path"`
 	Size     int64  `json:"size_bytes"`
@@ -79,7 +80,7 @@ func runGoldenList(ctx context.Context, ios IOStreams, deps Deps, st *runState) 
 	docs := make([]goldenDoc, 0, len(infos))
 	for _, g := range infos {
 		docs = append(docs, goldenDoc{
-			SHA: g.BaseSHA, Path: g.Dir, Size: g.SizeBytes, Files: g.FileCount,
+			ID: g.ID, SHA: g.BaseSHA, Path: g.Dir, Size: g.SizeBytes, Files: g.FileCount,
 			State: string(g.State), InUse: g.InUse, LastUsed: formatTime(g.LastUsedAt),
 		})
 	}
@@ -89,13 +90,13 @@ func runGoldenList(ctx context.Context, ios IOStreams, deps Deps, st *runState) 
 			return err
 		}
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		_, _ = fmt.Fprintln(tw, "SHA\tSIZE\tFILES\tSTATE\tIN_USE\tLAST_USED")
+		_, _ = fmt.Fprintln(tw, "ID\tSHA\tSIZE\tFILES\tSTATE\tIN_USE\tLAST_USED")
 		for _, d := range docs {
 			last := d.LastUsed
 			if last == "" {
 				last = "-"
 			}
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%d\t%s\n", d.SHA, formatBytes(d.Size), d.Files, d.State, d.InUse, last)
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%d\t%s\n", d.ID, d.SHA, formatBytes(d.Size), d.Files, d.State, d.InUse, last)
 		}
 		return tw.Flush()
 	})

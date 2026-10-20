@@ -17,7 +17,7 @@ func goldenInfo(sha string, size int64, files int, state domain.GoldenState, inU
 		Golden: workspace.Golden{
 			ProjectID: "prj_X", BaseSHA: sha, Dir: "/ws/golden/" + sha, SizeBytes: size, FileCount: files,
 		},
-		State: state, InUse: inUse, LastUsedAt: used,
+		ID: "gld_" + sha, State: state, InUse: inUse, LastUsedAt: used,
 	}
 }
 
@@ -36,6 +36,7 @@ func TestGoldenListJSONGolden(t *testing.T) {
 	require.Len(t, docs, 2)
 	assert.InDelta(t, 1288490189, docs[0]["size_bytes"], 0)
 	assert.Equal(t, "/ws/golden/aaaa1111", docs[0]["path"])
+	assert.Equal(t, "gld_aaaa1111", docs[0]["id"])
 	assert.Equal(t, "prj_X", e.golden.gotProj)
 }
 
@@ -50,8 +51,8 @@ func TestGoldenListHumanAndEmpty(t *testing.T) {
 	}
 	r = e.run("golden", "list")
 	require.Equal(t, ExitOK, r.code, r.stderr)
-	assert.Regexp(t, `SHA\s+SIZE\s+FILES\s+STATE\s+IN_USE\s+LAST_USED`, r.stdout)
-	assert.Regexp(t, `aaaa1111\s+1\.2 GB\s+60123\s+ready\s+0\s+2026-03-01T10:00:00Z`, r.stdout)
+	assert.Regexp(t, `ID\s+SHA\s+SIZE\s+FILES\s+STATE\s+IN_USE\s+LAST_USED`, r.stdout)
+	assert.Regexp(t, `gld_aaaa1111\s+aaaa1111\s+1\.2 GB\s+60123\s+ready\s+0\s+2026-03-01T10:00:00Z`, r.stdout)
 }
 
 func TestGoldenGCRespectsBudgetAndInUse(t *testing.T) {
