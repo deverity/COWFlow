@@ -296,6 +296,7 @@ func TestDoctor_RepoSettings(t *testing.T) {
 
 	t.Run("gitattributes not required", func(t *testing.T) {
 		e := newDoctorEnv(t, harness.WithAttributes(""))
+		e.cfg = "[git]\nrequire_gitattributes = false\n" // the default is true
 		assert.Equal(t, StatusSkip, e.run().check(t, "git.gitattributes").Status)
 	})
 }

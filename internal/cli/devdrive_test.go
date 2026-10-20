@@ -283,15 +283,26 @@ func TestInit_WithoutDevDriveIsStub(t *testing.T) {
 	assert.Empty(t, e.dd.Calls)
 }
 
-func TestInitDevDrive_ConfigLocationUndecided(t *testing.T) {
+// TestInitDevDrive_LocatesConfigAtRepoRoot: with the real config.Locate,
+// init run in a subdirectory of a repository writes
+// <repository root>/.cowflow/config.toml (SPEC-GAPS U-API-1).
+func TestInitDevDrive_LocatesConfigAtRepoRoot(t *testing.T) {
 	e := newDDEnv(t, win11)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0o750))
+	sub := filepath.Join(root, "a", "b")
+	require.NoError(t, os.MkdirAll(sub, 0o750))
+	t.Chdir(sub)
+
 	deps := e.deps()
 	deps.ConfigPath = config.Locate
 	var out, errb bytes.Buffer
 	code := Execute(context.Background(), e.initArgs(), IOStreams{Out: &out, Err: &errb}, deps)
-	assert.Equal(t, ExitState, code)
-	assert.Contains(t, errb.String(), "U-API-1")
-	assert.Empty(t, e.dd.Calls, "nothing is provisioned without a config location")
+	require.Equal(t, ExitOK, code, errb.String())
+	want := filepath.Join(root, config.DirName, config.FileName)
+	assert.FileExists(t, want)
+	assert.Contains(t, out.String(), "Config written: "+want)
 }
 
 type fakeAttacher struct {
