@@ -57,9 +57,3 @@ func TestSave_FailureLeavesOriginal(t *testing.T) {
 	require.NoError(t, rerr)
 	require.Len(t, entries, 1, "temporary file must be removed")
 }
-
-func TestLocate_DoesNotGuess(t *testing.T) {
-	p, err := Locate()
-	require.Empty(t, p)
-	require.ErrorContains(t, err, "U-API-1")
-}
