@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   down to a byte budget, never one in use or building, renames before
   removal, retries `deleting` rows, and removes failed rows and leftover
   temp paths. `List` serves `golden list`.
+- `internal/workspace`: `EnvFileWriter` writes `.env.cowflow` into each new
+  workspace (atomic temp file and rename): sorted `KEY=VALUE` lines with the
+  project, task, workspace and inclusive port range, plus the shared
+  `GOMODCACHE`, `GOCACHE`, `npm_config_store_dir`, `GRADLE_USER_HOME` and
+  `PIP_CACHE_DIR`, and a per-workspace `CARGO_TARGET_DIR`. Cache directories
+  are created outside the workspace, values with a newline or NUL are
+  rejected, and a cache off the Dev Drive volume only logs a warning.
 - `internal/workspace` (Windows): the block-clone primitive for `cow_clone`.
   It clones a file with `FSCTL_DUPLICATE_EXTENTS_TO_FILE` in cluster-aligned
   chunks below 4 GiB, after matching the sparse and integrity-stream settings,
