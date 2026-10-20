@@ -16,11 +16,11 @@ prompt_mode     = "arg"
 
 [runner.aider]
 provider        = "openai"
-cmd             = ["aider", "--yes"]
+cmd             = ["aider", "--yes", "--message"]
 mcp_config_flag = []               # uses cowflow --json via shell
 permission_flag = []
 context_file    = "CONVENTIONS.md"
-prompt_mode     = "message"
+prompt_mode     = "arg"
 
 [runner.gemini]
 provider        = "google"

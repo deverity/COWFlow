@@ -37,6 +37,8 @@ pnpm_store   = "X:/cache/pnpm"
 go_modcache  = "X:/cache/gomod"
 go_cache     = "X:/cache/gobuild"
 cargo_target = "X:/cache/cargo-target"
+gradle_home  = "X:/cache/gradle"
+pip_cache    = "X:/cache/pip"
 
 [git]
 shared_ref_namespace = "refs/cowflow/changes"
@@ -65,8 +67,14 @@ on_budget_exceeded = "pause"
 [collaboration]
 presence_ttl_seconds = 90
 heartbeat_interval_seconds = 20
-escalation_after_minutes = 30
 event_delivery = "sse"
+
+# Minutes an open request waits for accept/reject before it is escalated to
+# the lead. 0 = no SLA, never auto-escalated.
+[collaboration.escalation_after_minutes]
+high   = 15
+normal = 60
+low    = 0
 
 [integration]
 require_validation = true
@@ -100,7 +108,7 @@ required = false
 [[invariants]]
 name = "no-cmd-import-in-internal"
 kind = "pattern"
-deny = ["internal/**: import \"cowflow/cmd"]
+deny = ["internal/**: import \"github.com/deverity/cowflow/cmd"]
 check_on_publish = true
 
 [[resources]]
@@ -130,6 +138,7 @@ tag_format = "v{major}.{minor}.{patch}"
 
 [scheduler.llm.anthropic]
 max_concurrent_requests = 5
+tokens_per_hour_budget = 2000000
 cost_per_day_budget_usd = 80
 
 [scheduler.llm.openai]

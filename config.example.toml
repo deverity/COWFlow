@@ -7,6 +7,8 @@
 # Local API daemon. The bind address must be a loopback host.
 [daemon]
 bind = "127.0.0.1:8787"
+# state_dir defaults to <dir of config.toml>/state; a relative value resolves
+# against the directory of this file.
 state_dir = "X:/state"
 log_level = "info"
 
@@ -27,7 +29,7 @@ auto_attach = true
 [workspace]
 provider = "auto"               # auto | cow_clone | projfs | git_worktree | container
 root = "X:/ws"
-golden_root = "X:/golden"
+golden_root = "X:/golden"       # optional; golden tree at <golden_root>/<sha>; empty = <root>/golden
 keep_failed_workspaces = true
 keep_failed_hours = 72
 cleanup_completed = false
@@ -47,11 +49,13 @@ pnpm_store   = "X:/cache/pnpm"
 go_modcache  = "X:/cache/gomod"
 go_cache     = "X:/cache/gobuild"
 cargo_target = "X:/cache/cargo-target"
+gradle_home  = "X:/cache/gradle"
+pip_cache    = "X:/cache/pip"
 
 [git]
 shared_ref_namespace = "refs/cowflow/changes"
 change_retention_days = 30
-default_sync_strategy = "merge"
+default_sync_strategy = "merge"   # merge | cherry-pick | squash
 require_gitattributes = true
 
 # Concurrency limits, timeouts and budgets.
@@ -76,12 +80,18 @@ on_budget_exceeded = "pause"
 [collaboration]
 presence_ttl_seconds = 90
 heartbeat_interval_seconds = 20
-escalation_after_minutes = 30
 event_delivery = "sse"
+
+# Minutes an open request waits for accept/reject before it is escalated to
+# the lead. 0 = no SLA, never auto-escalated.
+[collaboration.escalation_after_minutes]
+high   = 15
+normal = 60
+low    = 0
 
 [integration]
 require_validation = true
-promotion_mode = "manual"
+promotion_mode = "manual"        # manual | auto
 rerun_on_stale = true
 diff_only_first = true
 
@@ -108,11 +118,10 @@ cmd = ["golangci-lint", "run"]
 timeout_seconds = 300
 required = false
 
-# PENDING C6: the import path below does not match the module path; adjust after the decision.
 [[invariants]]
 name = "no-cmd-import-in-internal"
 kind = "pattern"
-deny = ["internal/**: import \"cowflow/cmd"]
+deny = ["internal/**: import \"github.com/deverity/cowflow/cmd"]
 check_on_publish = true
 
 [[resources]]
@@ -140,9 +149,9 @@ enforce_protected_branches = true
 enforce_commit_format = true
 tag_format = "v{major}.{minor}.{patch}"
 
-# PENDING C11: SCOPE.md shows this table with two different contents; adjust after the decision.
 [scheduler.llm.anthropic]
 max_concurrent_requests = 5
+tokens_per_hour_budget = 2000000
 cost_per_day_budget_usd = 80
 
 [scheduler.llm.openai]
@@ -175,6 +184,8 @@ prompt_mode     = "arg"
 enabled = false
 budget_tokens_per_hour = 200000
 
-# Files agents may never publish.
+# Files agents may never publish. Replaces this default list when set. The
+# built-in never-commit list (node_modules/, .cowflow/, *.log, .env*) always
+# applies and is not configurable.
 [security]
 blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]

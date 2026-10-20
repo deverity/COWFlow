@@ -103,15 +103,23 @@ func decode(text string) (*Config, error) {
 	}
 
 	var errs []error
-	llm, err := decodeSchedulerLLM(md, r.Scheduler.LLM)
+	llm, err := decodeSchedulerLLM(md, r.Scheduler.LLM, Default().Scheduler.LLM)
 	c.Scheduler.LLM = llm
 	if err != nil {
 		errs = append(errs, err)
 	}
-	runner, err := decodeRunner(md, r.Runner)
+	runner, err := decodeRunner(md, r.Runner, Default().Runner)
 	c.Runner = runner
 	if err != nil {
 		errs = append(errs, err)
+	}
+
+	// An array-of-tables element cannot be pre-filled, so the one default of
+	// [[resources]] (queue = "fifo") is applied here.
+	for i := range c.Resources {
+		if c.Resources[i].Queue == "" {
+			c.Resources[i].Queue = "fifo"
+		}
 	}
 
 	// PrimitiveDecode marks the keys it consumes as decoded, so whatever
@@ -127,8 +135,9 @@ func decode(text string) (*Config, error) {
 
 // decodeSchedulerLLM splits [scheduler.llm] into its scalars and its
 // per-provider tables.
-func decodeSchedulerLLM(md toml.MetaData, prims map[string]toml.Primitive) (SchedulerLLM, error) {
-	out := SchedulerLLM{Providers: map[string]LLMBudget{}}
+func decodeSchedulerLLM(md toml.MetaData, prims map[string]toml.Primitive, base SchedulerLLM) (SchedulerLLM, error) {
+	out := base
+	out.Providers = map[string]LLMBudget{}
 	var errs []error
 	for _, key := range sortedKeys(prims) {
 		prim := prims[key]
@@ -163,8 +172,9 @@ func decodeSchedulerLLM(md toml.MetaData, prims map[string]toml.Primitive) (Sche
 }
 
 // decodeRunner splits [runner] into its scalars and its per-runner tables.
-func decodeRunner(md toml.MetaData, prims map[string]toml.Primitive) (Runner, error) {
-	out := Runner{Defs: map[string]RunnerDef{}}
+func decodeRunner(md toml.MetaData, prims map[string]toml.Primitive, base Runner) (Runner, error) {
+	out := base
+	out.Defs = map[string]RunnerDef{}
 	var errs []error
 	for _, key := range sortedKeys(prims) {
 		prim := prims[key]

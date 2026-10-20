@@ -1,35 +1,91 @@
 package config
 
-// Default returns a configuration holding the spec-stated defaults only
-// (§22, §6.3, §9.4, §23 decisions 6, 7 and 10). Every other §22 value is an
-// example, not a default, and stays at its zero value until SPEC-GAPS
-// U-API-11 decides which ones are defaults.
+// Default returns the built-in configuration: every SCOPE.md §22 scalar is a
+// default except the ones that are derived or deployment-specific
+// (SPEC-GAPS U-API-11):
+//
+//   - daemon.state_dir (derived from the config location, see StatePath);
+//   - devdrive.path, devdrive.mount, devdrive.size_gb (enabled is false);
+//   - workspace.root and workspace.golden_root (see EffectiveGoldenRoot);
+//   - every cache.* key;
+//   - runner.default and runner.lead (decided in Sprint 3).
+//
+// [[gates]], [[invariants]], [[resources]], [runner.<name>] and
+// [scheduler.llm.<provider>] are examples only and have no defaults.
 func Default() *Config {
 	return &Config{
-		Project: Project{
-			Lead:        "human",
-			DefaultBase: "develop",
-			// PENDING U-API-11: Branching has no stated default.
+		Daemon:  Daemon{Bind: "127.0.0.1:8787", LogLevel: "info"},
+		Project: Project{Lead: "human", Branching: "gitflow", DefaultBase: "develop"},
+		DevDrive: DevDrive{
+			AutoAttach: true,
 		},
 		Workspace: Workspace{
-			Provider: "auto",
-			ProjFS:   ProjFS{Enabled: false},
-			// PENDING U-API-11: Root, GoldenRoot (also C7), the keep/cleanup
-			// settings and the port range are example values, not defaults.
+			Provider:              "auto",
+			KeepFailedWorkspaces:  true,
+			KeepFailedHours:       72,
+			CleanupCompleted:      false,
+			SparseByIntent:        true,
+			PortRangePerWorkspace: 10,
+			PortRangeStart:        40000,
+			ProjFS: ProjFS{
+				Enabled:     false,
+				ScopeOnly:   true,
+				FSMonitor:   true,
+				BlobCacheMB: 512,
+			},
 		},
 		Git: Git{
-			DefaultSyncStrategy: "merge", // accepted value set is PENDING C4
-			// PENDING U-API-11: the other [git] keys.
+			SharedRefNamespace:  "refs/cowflow/changes",
+			ChangeRetentionDays: 30,
+			DefaultSyncStrategy: "merge",
+			RequireGitattrs:     true,
+		},
+		Scheduler: Scheduler{
+			MaxAgents:                20,
+			MaxBuilds:                3,
+			MaxTests:                 6,
+			MaxIntegrationsPerTarget: 1,
+			SessionTimeoutSeconds:    3600,
+			CommandTimeoutSeconds:    900,
+			RetryLimit:               2,
+			RetryBackoffSeconds:      []int{30, 120},
+			WorkspaceDiskBudgetGB:    100,
+			GoldenCacheGB:            30,
+			LLM: SchedulerLLM{
+				LLMBudget: LLMBudget{
+					MaxConcurrentRequests: 8,
+					TokensPerHourBudget:   4000000,
+					CostPerDayBudgetUSD:   150,
+					OnBudgetExceeded:      "pause",
+				},
+			},
+		},
+		Collaboration: Collaboration{
+			PresenceTTLSeconds:       90,
+			HeartbeatIntervalSeconds: 20,
+			EscalationAfterMinutes:   Escalation{High: 15, Normal: 60, Low: 0},
+			EventDelivery:            "sse",
 		},
 		Integration: Integration{
-			PromotionMode: "manual", // accepted value set is PENDING C3
-			PostPromotion: PostPromotion{Enabled: false},
-			// PENDING U-API-11: the other [integration] keys.
+			RequireValidation: true,
+			PromotionMode:     "manual",
+			RerunOnStale:      true,
+			DiffOnlyFirst:     true,
+			PostPromotion: PostPromotion{
+				Enabled:    false,
+				Gates:      []string{"test"},
+				AutoRevert: true,
+			},
 		},
-		Watchdog: Watchdog{Enabled: false},
-		// PENDING U-API-11: [daemon], [devdrive], [cache], [scheduler],
-		// [collaboration], [conventions] and [security] defaults. In
-		// particular security.blocked_patterns stays empty until C12 and
-		// scheduler.retry_backoff_seconds stays nil.
+		Conventions: Conventions{
+			Preset:                   "gitflow",
+			EnforceBranchNames:       true,
+			EnforceProtectedBranches: true,
+			EnforceCommitFormat:      true,
+			TagFormat:                "v{major}.{minor}.{patch}",
+		},
+		Runner:   Runner{InjectProtocol: true},
+		Watchdog: Watchdog{Enabled: false, BudgetTokensPerHour: 200000},
+		Security: Security{BlockedPatterns: []string{".env", ".env.*", "*.pem", "*.key", "id_rsa*"}},
 	}
 }

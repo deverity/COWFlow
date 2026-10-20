@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cowflow devdrive attach` from the project root at logon of the user who
   ran init, with highest privileges; `Disable` removes it. Both are
   idempotent. Other systems report `ErrUnsupported`.
+- Config: `config.toml` lives at `<project root>/.cowflow/config.toml`
+  (`config.Locate` walks up to the nearest config, else the repository root).
+  `[collaboration.escalation_after_minutes]` is now a `high`/`normal`/`low`
+  table (defaults 15/60/0). Every SCOPE.md section 22 scalar is now a built-in
+  default, including `security.blocked_patterns`; empty `daemon.bind`,
+  `project.branching`, `conventions.preset`, resource `queue` and
+  `scheduler.retry_backoff_seconds` are rejected, as are
+  `integration.promotion_mode = "pr"` and `prompt_mode = "message"`.
+- `platform.AutoAttacher` seam with `NewAutoAttacher`: until the auto-attach
+  mechanism is decided (SPEC-GAPS U-PLAT-5), `Enable` returns
+  `ErrAutoAttachUndecided` on Windows and `ErrUnsupported` elsewhere.
 - `cowflow init --devdrive <size> --path <file.vhdx> --letter <X>` provisions
   an ReFS Dev Drive VHDX on Windows 11 22H2+, asking for administrator rights
   once (one UAC prompt), and records it under `[devdrive]` in the config file

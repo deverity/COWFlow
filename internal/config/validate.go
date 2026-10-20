@@ -5,16 +5,15 @@ import (
 	"fmt"
 	"net"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 )
 
-// check is one validation rule. A rule with a non-empty pending field names
-// the SPEC-GAPS item that blocks it: the rule is written but not enforced.
+// check is one validation rule.
 type check struct {
-	name    string
-	pending string
-	run     func(*Config) []error
+	name string
+	run  func(*Config) []error
 }
 
 // checks lists every validation rule in the order it reports.
@@ -29,21 +28,18 @@ var checks = []check{
 	{name: "runner", run: checkRunner},
 	{name: "scheduler.retry_backoff_seconds", run: checkRetryBackoff},
 	{name: "security.blocked_patterns", run: checkBlockedPatterns},
-
-	{name: "integration.promotion_mode", pending: "C3", run: checkPromotionMode},
-	{name: "git.default_sync_strategy", pending: "C4", run: checkSyncStrategy},
-	{name: "runner.prompt_mode", pending: "C10", run: checkPromptMode},
+	{name: "integration.promotion_mode", run: checkPromotionMode},
+	{name: "git.default_sync_strategy", run: checkSyncStrategy},
+	{name: "runner.prompt_mode", run: checkPromptMode},
+	{name: "devdrive.mount", run: checkMount},
 }
 
 // Validate reports every problem found in c, joined with errors.Join, so the
-// user can fix them in one pass. Rules blocked by an undecided SPEC-GAPS item
-// are not enforced.
+// user can fix them in one pass. Empty values fail: every key with a built-in
+// default (see Default) must be set.
 func (c *Config) Validate() error {
 	var errs []error
 	for _, ck := range checks {
-		if ck.pending != "" {
-			continue
-		}
 		errs = append(errs, ck.run(c)...)
 	}
 	return errors.Join(errs...)
@@ -53,9 +49,6 @@ func (c *Config) Validate() error {
 // accept "127.evil.example" and reject "[::1]".
 func checkBind(c *Config) []error {
 	bind := c.Daemon.Bind
-	if bind == "" {
-		return nil // PENDING U-API-11: no stated default
-	}
 	host, _, err := net.SplitHostPort(bind)
 	if err != nil {
 		return []error{fmt.Errorf("daemon.bind %q: %w", bind, err)}
@@ -86,30 +79,31 @@ func checkProject(c *Config) []error {
 	if id, ok := strings.CutPrefix(lead, "agent:"); lead != "human" && (!ok || id == "") {
 		errs = append(errs, fmt.Errorf("project.lead %q: must be human or agent:<task-id>", lead))
 	}
-	// PENDING U-API-11: an empty branching is allowed, it has no stated default.
-	if b := c.Project.Branching; b != "" && !slices.Contains([]string{"gitflow", "trunk"}, b) {
+	if b := c.Project.Branching; !slices.Contains([]string{"gitflow", "trunk"}, b) {
 		errs = append(errs, fmt.Errorf("project.branching %q: must be gitflow or trunk", b))
 	}
 	return errs
 }
 
 func checkPreset(c *Config) []error {
-	// PENDING U-API-11: an empty preset is allowed, it has no stated default.
-	if p := c.Conventions.Preset; p != "" && !slices.Contains([]string{"gitflow", "trunk", "none"}, p) {
+	if p := c.Conventions.Preset; !slices.Contains([]string{"gitflow", "trunk", "none"}, p) {
 		return []error{fmt.Errorf("conventions.preset %q: must be gitflow, trunk or none", p)}
 	}
 	return nil
 }
 
-// checkPromotionMode is PENDING C3: manual|auto vs also pr.
+// checkPromotionMode accepts manual and auto; "pr" is post-v1 (SCOPE.md §23).
 func checkPromotionMode(c *Config) []error {
+	if c.Integration.PromotionMode == "pr" {
+		return []error{errors.New(`integration.promotion_mode "pr": not supported in v1; use manual or auto`)}
+	}
 	if m := c.Integration.PromotionMode; !slices.Contains([]string{"manual", "auto"}, m) {
 		return []error{fmt.Errorf("integration.promotion_mode %q: must be manual or auto", m)}
 	}
 	return nil
 }
 
-// checkSyncStrategy is PENDING C4: squash-merge vs squash.
+// checkSyncStrategy accepts merge, cherry-pick and squash.
 func checkSyncStrategy(c *Config) []error {
 	if s := c.Git.DefaultSyncStrategy; !slices.Contains([]string{"merge", "cherry-pick", "squash"}, s) {
 		return []error{fmt.Errorf("git.default_sync_strategy %q: must be merge, cherry-pick or squash", s)}
@@ -117,7 +111,7 @@ func checkSyncStrategy(c *Config) []error {
 	return nil
 }
 
-// checkPromptMode is PENDING C10: arg|stdin|file vs also message.
+// checkPromptMode accepts arg, stdin and file; an unset mode is allowed.
 func checkPromptMode(c *Config) []error {
 	var errs []error
 	for _, name := range sortedRunnerNames(c.Runner.Defs) {
@@ -169,8 +163,7 @@ func checkResources(c *Config) []error {
 		if r.Slots <= 0 {
 			errs = append(errs, fmt.Errorf("resources[%d] %q: slots must be greater than 0", i, r.Name))
 		}
-		// PENDING U-API-11: an empty queue is allowed, it has no stated default.
-		if r.Queue != "" && !slices.Contains([]string{"fifo", "priority"}, r.Queue) {
+		if !slices.Contains([]string{"fifo", "priority"}, r.Queue) {
 			errs = append(errs, fmt.Errorf("resources[%d] %q: queue %q must be fifo or priority", i, r.Name, r.Queue))
 		}
 	}
@@ -195,17 +188,16 @@ func checkRunner(c *Config) []error {
 	return errs
 }
 
-// checkRetryBackoff rejects an explicitly empty list. PENDING U-API-11: the
-// default list is undecided, so an absent (nil) value is accepted.
+// checkRetryBackoff rejects an empty list.
 func checkRetryBackoff(c *Config) []error {
-	if b := c.Scheduler.RetryBackoffSeconds; b != nil && len(b) == 0 {
+	if len(c.Scheduler.RetryBackoffSeconds) == 0 {
 		return []error{errors.New("scheduler.retry_backoff_seconds: must not be empty")}
 	}
 	return nil
 }
 
-// checkBlockedPatterns requires every pattern to compile. The default list is
-// PENDING C12.
+// checkBlockedPatterns requires every pattern to compile. The list may be
+// empty: a file value replaces the default list.
 func checkBlockedPatterns(c *Config) []error {
 	var errs []error
 	for _, p := range c.Security.BlockedPatterns {
@@ -214,6 +206,19 @@ func checkBlockedPatterns(c *Config) []error {
 		}
 	}
 	return errs
+}
+
+// letterMount is the accepted mount form: one drive letter D-Z and a colon,
+// as in internal/platform. The mount point form (C:\cf\) is an open question
+// (SCOPE.md section 23) and is rejected.
+var letterMount = regexp.MustCompile(`^[D-Z]:$`)
+
+// checkMount validates devdrive.mount when set; it has no default.
+func checkMount(c *Config) []error {
+	if m := c.DevDrive.Mount; m != "" && !letterMount.MatchString(m) {
+		return []error{fmt.Errorf(`devdrive.mount %q: must be a drive letter D-Z such as "X:"; mount points are not supported in v1`, m)}
+	}
+	return nil
 }
 
 func sortedRunnerNames(m map[string]RunnerDef) []string {

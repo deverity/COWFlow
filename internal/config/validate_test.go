@@ -17,22 +17,76 @@ func valid() *Config {
 	return c
 }
 
-func TestDefault_SpecStatedOnly(t *testing.T) {
-	c := Default()
-	assert.Equal(t, "auto", c.Workspace.Provider)
-	assert.Equal(t, "human", c.Project.Lead)
-	assert.Equal(t, "develop", c.Project.DefaultBase)
-	assert.Equal(t, "merge", c.Git.DefaultSyncStrategy)
-	assert.Equal(t, "manual", c.Integration.PromotionMode)
-	assert.False(t, c.Workspace.ProjFS.Enabled)
-	assert.False(t, c.Watchdog.Enabled)
-	assert.False(t, c.Integration.PostPromotion.Enabled)
+// TestDefault_MatchesSpec22 pins U-API-11: decoding the SCOPE.md section 22
+// mirror gives Default() plus the values section 22 only gives as examples.
+func TestDefault_MatchesSpec22(t *testing.T) {
+	got, err := Load(filepath.Join("testdata", "spec22.toml"))
+	require.NoError(t, err)
 
-	// Everything else waits for U-API-11 / C12.
-	assert.Empty(t, c.Daemon.Bind)
-	assert.Empty(t, c.Project.Branching)
-	assert.Nil(t, c.Scheduler.RetryBackoffSeconds)
-	assert.Nil(t, c.Security.BlockedPatterns)
+	want := Default()
+	// Derived or deployment-specific: no built-in default.
+	assert.Empty(t, want.Daemon.StateDir)
+	assert.False(t, want.DevDrive.Enabled)
+	assert.Empty(t, want.DevDrive.Path)
+	assert.Empty(t, want.DevDrive.Mount)
+	assert.Zero(t, want.DevDrive.SizeGB)
+	assert.Empty(t, want.Workspace.Root)
+	assert.Empty(t, want.Workspace.GoldenRoot)
+	assert.Equal(t, Cache{}, want.Cache)
+	assert.Empty(t, want.Runner.Default)
+	assert.Empty(t, want.Runner.Lead)
+	// Examples only.
+	assert.Empty(t, want.Gates)
+	assert.Empty(t, want.Invariants)
+	assert.Empty(t, want.Resources)
+	assert.Empty(t, want.Runner.Defs)
+	assert.Empty(t, want.Scheduler.LLM.Providers)
+
+	want.Daemon.StateDir = got.Daemon.StateDir
+	want.DevDrive.Enabled = got.DevDrive.Enabled
+	want.DevDrive.Path = got.DevDrive.Path
+	want.DevDrive.Mount = got.DevDrive.Mount
+	want.DevDrive.SizeGB = got.DevDrive.SizeGB
+	want.Workspace.Root = got.Workspace.Root
+	want.Workspace.GoldenRoot = got.Workspace.GoldenRoot
+	want.Cache = got.Cache
+	want.Runner.Default = got.Runner.Default
+	want.Runner.Lead = got.Runner.Lead
+	want.Runner.Defs = got.Runner.Defs
+	want.Scheduler.LLM.Providers = got.Scheduler.LLM.Providers
+	want.Gates = got.Gates
+	want.Invariants = got.Invariants
+	want.Resources = got.Resources
+	assert.Equal(t, want, got)
+}
+
+func TestDefault_Values(t *testing.T) {
+	c := Default()
+	assert.Equal(t, "127.0.0.1:8787", c.Daemon.Bind)
+	assert.Equal(t, "gitflow", c.Project.Branching)
+	assert.Equal(t, Escalation{High: 15, Normal: 60, Low: 0}, c.Collaboration.EscalationAfterMinutes)
+	assert.Equal(t, []string{".env", ".env.*", "*.pem", "*.key", "id_rsa*"}, c.Security.BlockedPatterns)
+	assert.True(t, c.Runner.InjectProtocol)
+	assert.True(t, c.DevDrive.AutoAttach)
+}
+
+func TestDecode_ResourceQueueDefaultsToFifo(t *testing.T) {
+	c, err := decode("[[resources]]\nname = \"a\"\nslots = 1\n")
+	require.NoError(t, err)
+	assert.Equal(t, "fifo", c.Resources[0].Queue)
+}
+
+func TestDecode_BlockedPatternsReplaceDefault(t *testing.T) {
+	c, err := decode("[security]\nblocked_patterns = [\"*.p12\"]\n")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"*.p12"}, c.Security.BlockedPatterns)
+}
+
+func TestWorkspace_EffectiveGoldenRoot(t *testing.T) {
+	assert.Empty(t, Workspace{}.EffectiveGoldenRoot())
+	assert.Equal(t, "X:/ws/golden", Workspace{Root: "X:/ws"}.EffectiveGoldenRoot())
+	assert.Equal(t, "X:/ws/golden", Workspace{Root: "X:/ws/"}.EffectiveGoldenRoot())
+	assert.Equal(t, "X:/golden", Workspace{Root: "X:/ws", GoldenRoot: "X:/golden"}.EffectiveGoldenRoot())
 }
 
 func TestValidate_Defaults(t *testing.T) {
@@ -51,6 +105,19 @@ func TestValidate_Rules(t *testing.T) {
 		{"projfs without flag", func(c *Config) { c.Workspace.Provider = "projfs" }, "workspace.projfs.enabled"},
 		{"lead unknown", func(c *Config) { c.Project.Lead = "robot" }, "project.lead"},
 		{"lead agent without task", func(c *Config) { c.Project.Lead = "agent:" }, "project.lead"},
+		{"branching empty", func(c *Config) { c.Project.Branching = "" }, "project.branching"},
+		{"preset empty", func(c *Config) { c.Conventions.Preset = "" }, "conventions.preset"},
+		{"bind empty", func(c *Config) { c.Daemon.Bind = "" }, "daemon.bind"},
+		{"queue empty", func(c *Config) { c.Resources = []Resource{{Name: "a", Slots: 1}} }, "queue"},
+		{"nil backoff", func(c *Config) { c.Scheduler.RetryBackoffSeconds = nil }, "retry_backoff_seconds"},
+		{"promotion pr", func(c *Config) { c.Integration.PromotionMode = "pr" }, "not supported in v1"},
+		{"promotion unknown", func(c *Config) { c.Integration.PromotionMode = "x" }, "integration.promotion_mode"},
+		{"sync squash-merge", func(c *Config) { c.Git.DefaultSyncStrategy = "squash-merge" }, "git.default_sync_strategy"},
+		{"prompt mode message", func(c *Config) {
+			c.Runner.Defs["claude-code"] = RunnerDef{Cmd: []string{"x"}, PromptMode: "message"}
+		}, "runner.claude-code.prompt_mode"},
+		{"mount point form", func(c *Config) { c.DevDrive.Mount = `C:\cf\` }, "devdrive.mount"},
+		{"mount letter C", func(c *Config) { c.DevDrive.Mount = "C:" }, "devdrive.mount"},
 		{"branching unknown", func(c *Config) { c.Project.Branching = "svn" }, "project.branching"},
 		{"preset unknown", func(c *Config) { c.Conventions.Preset = "git-flow" }, "conventions.preset"},
 		{"resource zero slots", func(c *Config) { c.Resources = []Resource{{Name: "a", Slots: 0}} }, "slots must be greater than 0"},
@@ -90,6 +157,9 @@ func TestValidate_AcceptsValidValues(t *testing.T) {
 	c.Workspace.ProjFS.Enabled = true
 	c.Scheduler.RetryBackoffSeconds = []int{30, 120}
 	c.Security.BlockedPatterns = []string{"*.pem", ".env*"}
+	c.Integration.PromotionMode = "auto"
+	c.Git.DefaultSyncStrategy = "squash"
+	c.DevDrive.Mount = "X:"
 	c.Resources = []Resource{{Name: "compile", Slots: 2, Queue: "fifo"}}
 	c.Runner.Lead = "claude-code"
 	require.NoError(t, c.Validate())
@@ -135,44 +205,6 @@ func TestValidate_AllErrorsReported(t *testing.T) {
 	assert.Contains(t, err.Error(), "daemon.bind")
 	assert.Contains(t, err.Error(), "project.lead")
 	assert.Contains(t, err.Error(), "gates[0]")
-}
-
-// TestValidate_PendingGaps lists every rule blocked by an undecided SPEC-GAPS
-// item. They are skipped until the maintainer decides the gap.
-func TestValidate_PendingGaps(t *testing.T) {
-	rows := []struct {
-		id     string
-		mutate func(*Config)
-	}{
-		{"C3", func(c *Config) { c.Integration.PromotionMode = "pr" }},
-		{"C4", func(c *Config) { c.Git.DefaultSyncStrategy = "squash-merge" }},
-		{"C10", func(c *Config) { c.Runner.Defs["claude-code"] = RunnerDef{Cmd: []string{"x"}, PromptMode: "message"} }},
-		{"C12", func(*Config) {}},
-	}
-	for _, row := range rows {
-		t.Run(row.id, func(t *testing.T) {
-			t.Skip("PENDING " + row.id)
-			c := valid()
-			row.mutate(c)
-			assert.Error(t, c.Validate())
-		})
-	}
-}
-
-func TestValidate_PendingRulesAreNotEnforced(t *testing.T) {
-	c := valid()
-	c.Integration.PromotionMode = "anything"
-	c.Git.DefaultSyncStrategy = "anything"
-	c.Runner.Defs["claude-code"] = RunnerDef{Cmd: []string{"x"}, PromptMode: "message"}
-	require.NoError(t, c.Validate())
-
-	pending := map[string]bool{}
-	for _, ck := range checks {
-		if ck.pending != "" {
-			pending[ck.pending] = true
-		}
-	}
-	assert.Equal(t, map[string]bool{"C3": true, "C4": true, "C10": true}, pending)
 }
 
 func TestLoad_AppliesDefaultsAndValidates(t *testing.T) {

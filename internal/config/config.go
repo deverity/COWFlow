@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 // Config is the root of config.toml. Its fields mirror SCOPE.md §22.
 type Config struct {
 	Daemon        Daemon        `toml:"daemon"`
@@ -47,7 +49,7 @@ type DevDrive struct {
 type Workspace struct {
 	Provider              string `toml:"provider"`
 	Root                  string `toml:"root"`
-	GoldenRoot            string `toml:"golden_root"` // PENDING C7: golden_root vs <root>/golden/<sha>
+	GoldenRoot            string `toml:"golden_root"` // optional; golden tree at <golden_root>/<sha>; empty means <root>/golden
 	KeepFailedWorkspaces  bool   `toml:"keep_failed_workspaces"`
 	KeepFailedHours       int    `toml:"keep_failed_hours"`
 	CleanupCompleted      bool   `toml:"cleanup_completed"`
@@ -71,15 +73,15 @@ type Cache struct {
 	GoModCache  string `toml:"go_modcache"`
 	GoCache     string `toml:"go_cache"`
 	CargoTarget string `toml:"cargo_target"`
-	GradleHome  string `toml:"gradle_home"` // PENDING C13: in §6.7, missing from the §22 example
-	PipCache    string `toml:"pip_cache"`   // PENDING C13: in §6.7, missing from the §22 example
+	GradleHome  string `toml:"gradle_home"`
+	PipCache    string `toml:"pip_cache"`
 }
 
 // Git is [git].
 type Git struct {
 	SharedRefNamespace  string `toml:"shared_ref_namespace"`
 	ChangeRetentionDays int    `toml:"change_retention_days"`
-	DefaultSyncStrategy string `toml:"default_sync_strategy"` // PENDING C4: accepted values
+	DefaultSyncStrategy string `toml:"default_sync_strategy"` // merge | cherry-pick | squash
 	RequireGitattrs     bool   `toml:"require_gitattributes"`
 }
 
@@ -88,7 +90,7 @@ type Scheduler struct {
 	MaxAgents                int          `toml:"max_agents"`
 	MaxBuilds                int          `toml:"max_builds"`
 	MaxTests                 int          `toml:"max_tests"`
-	MaxIntegrationsPerTarget int          `toml:"max_integrations_per_target"` // PENDING C5: vs max_concurrent_per_target (§10.3); no alias until decided
+	MaxIntegrationsPerTarget int          `toml:"max_integrations_per_target"`
 	SessionTimeoutSeconds    int          `toml:"session_timeout_seconds"`
 	CommandTimeoutSeconds    int          `toml:"command_timeout_seconds"`
 	RetryLimit               int          `toml:"retry_limit"`
@@ -115,16 +117,25 @@ type SchedulerLLM struct {
 
 // Collaboration is [collaboration].
 type Collaboration struct {
-	PresenceTTLSeconds       int    `toml:"presence_ttl_seconds"`
-	HeartbeatIntervalSeconds int    `toml:"heartbeat_interval_seconds"`
-	EscalationAfterMinutes   int    `toml:"escalation_after_minutes"` // PENDING C9: vs per-priority SLA
-	EventDelivery            string `toml:"event_delivery"`
+	PresenceTTLSeconds       int        `toml:"presence_ttl_seconds"`
+	HeartbeatIntervalSeconds int        `toml:"heartbeat_interval_seconds"`
+	EscalationAfterMinutes   Escalation `toml:"escalation_after_minutes"`
+	EventDelivery            string     `toml:"event_delivery"`
+}
+
+// Escalation is [collaboration.escalation_after_minutes]: minutes an open
+// cross request may wait for accept/reject, per priority, before
+// cross_request.escalated goes to the lead. 0 means no SLA: never escalated.
+type Escalation struct {
+	High   int `toml:"high"`
+	Normal int `toml:"normal"`
+	Low    int `toml:"low"`
 }
 
 // Integration is [integration].
 type Integration struct {
 	RequireValidation bool          `toml:"require_validation"`
-	PromotionMode     string        `toml:"promotion_mode"` // PENDING C3: accepted values
+	PromotionMode     string        `toml:"promotion_mode"` // manual | auto ("pr" is post-v1)
 	RerunOnStale      bool          `toml:"rerun_on_stale"`
 	DiffOnlyFirst     bool          `toml:"diff_only_first"`
 	PostPromotion     PostPromotion `toml:"post_promotion"`
@@ -178,7 +189,7 @@ type RunnerDef struct {
 	MCPConfigFlag  []string `toml:"mcp_config_flag"`
 	PermissionFlag []string `toml:"permission_flag"`
 	ContextFile    string   `toml:"context_file"`
-	PromptMode     string   `toml:"prompt_mode"` // PENDING C10: enum check is S0-T04
+	PromptMode     string   `toml:"prompt_mode"` // arg | stdin | file
 }
 
 // Runner is [runner]: scalars plus one table per runner name.
@@ -197,5 +208,18 @@ type Watchdog struct {
 
 // Security is [security].
 type Security struct {
-	BlockedPatterns []string `toml:"blocked_patterns"` // PENDING C12: relationship with the §24.13 never-commit list
+	BlockedPatterns []string `toml:"blocked_patterns"` // replaces the default list; the built-in never-commit list (§24.13) is separate and fixed
+}
+
+// EffectiveGoldenRoot returns the directory holding golden trees
+// (<dir>/<sha>): golden_root when set, else <workspace.root>/golden.
+// It is empty when neither is set.
+func (w Workspace) EffectiveGoldenRoot() string {
+	if w.GoldenRoot != "" {
+		return w.GoldenRoot
+	}
+	if w.Root == "" {
+		return ""
+	}
+	return strings.TrimRight(w.Root, `/\`) + "/golden"
 }
