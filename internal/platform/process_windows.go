@@ -4,6 +4,7 @@ package platform
 
 import (
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -122,15 +123,23 @@ func (t *winTree) Cancel(grace time.Duration) error {
 		// every remaining member.
 		return nil
 	}
-	// Best effort: fails without a shared console (CI, services) — the
-	// deadline path covers it. PENDING U-PLAT-6: CTRL_BREAK when COWFlow runs
-	// as a Windows service (no console).
-	_ = windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(t.cmd.Process.Pid)) //nolint:gosec // G115: a Windows PID is a DWORD
-	timer := time.NewTimer(grace)
-	defer timer.Stop()
-	select {
-	case <-t.done:
-	case <-timer.C:
+	// CTRL_BREAK first, then the grace deadline. Interim rule (SCOPE.md §23,
+	// SPEC-GAPS U-PLAT-6): when the event cannot be delivered (no shared
+	// console: CI, services) nothing can end the tree gracefully, so the
+	// grace wait is skipped and the job is terminated at once. PENDING
+	// U-PLAT-6 (Phase 4, S4-E9): graceful stop of runners under the
+	// Windows service.
+	pid := uint32(t.cmd.Process.Pid) //nolint:gosec // G115: a Windows PID is a DWORD
+	if err := windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, pid); err != nil {
+		slog.Debug("platform: CTRL_BREAK not delivered; terminating the job without grace",
+			"pid", pid, "err", err)
+	} else {
+		timer := time.NewTimer(grace)
+		defer timer.Stop()
+		select {
+		case <-t.done:
+		case <-timer.C:
+		}
 	}
 	// Kill every remaining member, including grandchildren that outlived the root.
 	if err := windows.TerminateJobObject(t.job, 1); err != nil {

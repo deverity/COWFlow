@@ -22,6 +22,7 @@ type Tree interface {
 	// like exec.Cmd.Wait. Later calls return the same error.
 	Wait() error
 	// Cancel asks politely (CTRL_BREAK / SIGTERM), waits up to grace, then kills the whole tree.
+	// On Windows the wait is skipped when CTRL_BREAK cannot be delivered (no console).
 	Cancel(grace time.Duration) error
 }
 
