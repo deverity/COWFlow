@@ -20,3 +20,15 @@ import "context"
 type Cloner interface {
 	CloneFile(ctx context.Context, src, dst string) error
 }
+
+// osCloner is the production Cloner: the per-OS block-clone primitive of
+// cow_<goos>.go (FSCTL_DUPLICATE_EXTENTS_TO_FILE, FICLONE, clonefile). It
+// never copies bytes.
+type osCloner struct{}
+
+var _ Cloner = osCloner{}
+
+// CloneFile calls cloneFile.
+func (osCloner) CloneFile(ctx context.Context, src, dst string) error {
+	return cloneFile(ctx, src, dst)
+}

@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filesystem, and removes the worktree, directory and admin entry when a
   create fails. An existing branch is `ErrBranchExists`; an existing path is
   never touched. Inspect and destroy follow in later tasks.
+- `internal/workspace`: the `cow_clone` provider. It reports block
+  copy-on-write only when the golden root and `workspace.root` share a volume
+  and a 64 KiB probe clone under the root succeeds (cached per root);
+  otherwise `auto` falls back to `git_worktree`. A workspace is
+  `git worktree add --no-checkout` on the task branch, then every golden file
+  block-cloned by 16 parallel workers (directories created, symlinks
+  replicated, no byte copy), then the golden index block-cloned as the
+  worktree's index with `core.checkStat=minimal` and `core.trustCtime=false`,
+  so `git status` is clean without rehashing. The file count and `HEAD` are
+  checked; any failure (disk full, cancellation) removes the worktree,
+  directory and admin entry. `Deps.CowClone` builds it in `NewManager` over
+  the OS block-clone primitive and the manager's golden cache.
 - `internal/workspace` (Linux, macOS): the block-clone primitive for `cow_clone`
   on the other two platforms. Linux clones with the `FICLONE` ioctl (btrfs,
   XFS with `reflink=1`), macOS with `clonefile(2)` (APFS); both refuse

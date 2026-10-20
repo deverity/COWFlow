@@ -70,7 +70,11 @@ type Deps struct {
 	Git      GitOps
 	Volumes  Volumes           // default PlatformVolumes
 	DevDrive DevDrives         // default platform.NewDevDrive(platform.NewHost())
-	Cow      WorkspaceProvider // cow_clone; nil means not built in (S1-T10)
+	Cow      WorkspaceProvider // cow_clone; nil: see CowClone
+	// CowClone, when Cow is nil, builds the cow_clone provider over the OS
+	// block-clone primitive and the Manager's golden cache. False with a nil
+	// Cow means cow_clone is not built in.
+	CowClone bool
 	Worktree WorkspaceProvider // git_worktree
 	Env      EnvWriter         // nil: no .env.cowflow yet (S1-T15)
 	Events   EventSink         // default: log at info
@@ -145,6 +149,11 @@ func NewManager(d Deps) *Manager {
 	}
 	if m.events == nil {
 		m.events = logEvents{log: m.log}
+	}
+	if m.cow == nil && d.CowClone {
+		m.cow = NewCowCloneProvider(CowCloneDeps{
+			Config: &m.cfg, Git: m.git, Golden: m.Golden(), Volumes: m.vols, Logger: m.log,
+		})
 	}
 	return m
 }
