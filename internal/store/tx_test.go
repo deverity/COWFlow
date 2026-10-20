@@ -16,8 +16,8 @@ import (
 	"github.com/deverity/cowflow/internal/domain"
 )
 
-// testIDs mints unique IDs without the production prefix table, which is
-// pending SPEC-GAPS U-DATA-2. The tag keeps IDs unique across processes.
+// testIDs mints unique IDs without the production prefix table or
+// the ULID generator. The tag keeps IDs unique across processes.
 type testIDs struct {
 	tag string
 	n   *atomic.Int64
