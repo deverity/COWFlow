@@ -10,6 +10,9 @@ var (
 	// ErrInvalidTransition means the row's current state does not allow the
 	// requested change.
 	ErrInvalidTransition = errors.New("store: invalid state transition")
+	// ErrTaskHasWorkspaces means the task still has a workspace row that is
+	// not failed, so DeleteTask refuses to remove it.
+	ErrTaskHasWorkspaces = errors.New("store: task has workspaces")
 	// ErrPortRangeExhausted means no port slot fits below port 65535.
 	ErrPortRangeExhausted = errors.New("store: port range exhausted")
 )

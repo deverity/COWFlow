@@ -82,6 +82,42 @@ func (s *Store) GetTaskBySlug(ctx context.Context, projectID, slug string) (doma
 	return t, nil
 }
 
+// DeleteTask removes the task and, in the same transaction, its failed
+// workspace rows (a failed row is terminal and holds nothing; the foreign key
+// would otherwise block the delete). Nothing else is removed. A task with
+// any workspace row in another state, destroyed included, is refused with
+// ErrTaskHasWorkspaces and nothing is changed. A task that does not exist in
+// the project is ErrNotFound.
+func (s *Store) DeleteTask(ctx context.Context, projectID, taskID string) error {
+	return s.WithTx(ctx, "", func(tx *Tx) error {
+		var found int
+		err := tx.tx.QueryRowContext(ctx,
+			"SELECT 1 FROM tasks WHERE id = ? AND project_id = ?", taskID, projectID).Scan(&found)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: task %q", ErrNotFound, taskID)
+		}
+		if err != nil {
+			return fmt.Errorf("store: read task: %w", err)
+		}
+		var blocking int
+		if err := tx.tx.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM workspaces WHERE task_id = ? AND state <> 'failed'", taskID).Scan(&blocking); err != nil {
+			return fmt.Errorf("store: count task workspaces: %w", err)
+		}
+		if blocking > 0 {
+			return fmt.Errorf("%w: task %s has %d workspace(s) that are not failed", ErrTaskHasWorkspaces, taskID, blocking)
+		}
+		if _, err := tx.tx.ExecContext(ctx,
+			"DELETE FROM workspaces WHERE task_id = ? AND state = 'failed'", taskID); err != nil {
+			return fmt.Errorf("store: delete failed workspaces: %w", err)
+		}
+		if _, err := tx.tx.ExecContext(ctx, "DELETE FROM tasks WHERE id = ?", taskID); err != nil {
+			return fmt.Errorf("store: delete task: %w", err)
+		}
+		return nil
+	})
+}
+
 func boolToInt(b bool) int {
 	if b {
 		return 1

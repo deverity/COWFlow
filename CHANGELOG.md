@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WriteTree`, `CommitTree`, `UpdateRef`), so `destroy --force` on a dirty
   workspace can save its changes. The commit identity is set per call and
   wins over inherited `GIT_AUTHOR_*` / `GIT_COMMITTER_*`.
+- `internal/store`: `DeleteTask` removes a task and its failed workspace rows
+  in one transaction, and refuses with `ErrTaskHasWorkspaces` when any other
+  workspace row exists. `UpdateWorkspaceSparsePaths` stores the widened scope
+  of a ready workspace (for `ExpandScope`).
 - `internal/workspace`: sparse checkout from the task paths in both providers.
   The cone set is the normalized `--paths` plus `contracts`. `git_worktree`
   adds the worktree without checkout, sets the cone and populates it;

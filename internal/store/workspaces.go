@@ -280,6 +280,36 @@ func (s *Store) insertAudit(ctx context.Context, tx *Tx, now time.Time, cur doma
 	return nil
 }
 
+// UpdateWorkspaceSparsePaths replaces the sparse paths of a ready workspace
+// (ExpandScope). The caller passes the already normalized, complete set; nil
+// is stored as an empty list. A missing workspace is ErrNotFound; a workspace
+// in any other state is ErrInvalidTransition and keeps its stored paths.
+func (s *Store) UpdateWorkspaceSparsePaths(ctx context.Context, workspaceID string, paths []string) error {
+	enc, err := marshalStrings(paths)
+	if err != nil {
+		return err
+	}
+	return s.WithTx(ctx, "", func(tx *Tx) error {
+		var state string
+		err := tx.tx.QueryRowContext(ctx, "SELECT state FROM workspaces WHERE id = ?", workspaceID).Scan(&state)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: workspace %q", ErrNotFound, workspaceID)
+		}
+		if err != nil {
+			return fmt.Errorf("store: read workspace: %w", err)
+		}
+		if domain.WorkspaceState(state) != domain.WorkspaceReady {
+			return fmt.Errorf("%w: workspace %s is %s, sparse paths change only when ready", ErrInvalidTransition, workspaceID, state)
+		}
+		if _, err := tx.tx.ExecContext(ctx,
+			"UPDATE workspaces SET sparse_paths = ?, updated_at = ? WHERE id = ?",
+			enc, formatTime(s.clock.Now().UTC()), workspaceID); err != nil {
+			return fmt.Errorf("store: update sparse paths: %w", err)
+		}
+		return nil
+	})
+}
+
 // GetWorkspace returns the workspace with the ID, or ErrNotFound.
 func (s *Store) GetWorkspace(ctx context.Context, id string) (domain.WorkspaceRecord, error) {
 	r, err := scanWorkspace(s.db.QueryRowContext(ctx,
