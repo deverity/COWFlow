@@ -16,7 +16,7 @@ type WorkspaceProvider interface {
 	Capabilities(ctx context.Context, root string) (Capabilities, error)
 	Create(ctx context.Context, spec WorkspaceSpec) (*Workspace, error)
 	Inspect(ctx context.Context, id string) (*WorkspaceStatus, error)
-	Destroy(ctx context.Context, id string, opts DestroyOptions) error
+	Destroy(ctx context.Context, id string, opts DestroyOptions) (DestroyResult, error)
 }
 
 // Capabilities is what a provider actually delivers under a root (SCOPE.md
@@ -128,4 +128,21 @@ func (d DirtyReport) Clean() bool { return len(d.Uncommitted) == 0 && len(d.Unpu
 // DestroyOptions configures Destroy. With Force, unpreserved changes are
 // rescued to refs/cowflow/rescue/<workspace_id> before removal (§23
 // decision 40).
-type DestroyOptions struct{ Force bool }
+//
+// Actor is who asked for the destroy; it fills the audit row. An empty Actor
+// leaves the audit actor to the store's default.
+type DestroyOptions struct {
+	Force bool
+	Actor Actor
+}
+
+// Actor identifies who performs an audited operation, e.g. kind "user" and
+// the OS user name for a daemonless CLI call (SCOPE.md §17).
+type Actor struct{ Kind, ID string }
+
+// DestroyResult is what a destroy reports back. RescueRef is the ref that
+// holds the rescued unpreserved changes (refs/cowflow/rescue/<workspace_id>)
+// and is empty when nothing needed rescuing. It is also set when the destroy
+// ends in [ErrPendingCleanup] after the rescue ran, so the caller can still
+// tell the user where their work is.
+type DestroyResult struct{ RescueRef string }

@@ -443,7 +443,7 @@ func (p *CowCloneProvider) WithDestroyer(d *Destroyer) *CowCloneProvider {
 // Destroy destroys the workspace through the shared [Destroyer]. A cow_clone
 // workspace is a registered worktree, so its removal is the git_worktree
 // one; the golden tree it was cloned from is never touched.
-func (p *CowCloneProvider) Destroy(ctx context.Context, id string, opts DestroyOptions) error {
+func (p *CowCloneProvider) Destroy(ctx context.Context, id string, opts DestroyOptions) (DestroyResult, error) {
 	return p.destroyer.Destroy(ctx, ProviderCowClone, id, opts)
 }
 

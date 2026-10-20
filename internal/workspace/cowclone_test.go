@@ -331,7 +331,8 @@ func TestCowCloneNameAndMissingCollaborators(t *testing.T) {
 	assert.Equal(t, workspace.ProviderCowClone, p.Name())
 	_, err := p.Inspect(context.Background(), "wks_1")
 	require.Error(t, err, "no inspector: an error, not a panic")
-	require.Error(t, p.Destroy(context.Background(), "wks_1", workspace.DestroyOptions{}), "no destroyer: an error, not a panic")
+	_, err = p.Destroy(context.Background(), "wks_1", workspace.DestroyOptions{})
+	require.Error(t, err, "no destroyer: an error, not a panic")
 	_, err = p.Create(context.Background(), workspace.WorkspaceSpec{})
 	require.Error(t, err, "missing dependencies are reported, not a panic")
 }

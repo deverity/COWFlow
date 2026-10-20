@@ -126,27 +126,32 @@ func (p *FakeProvider) Inspect(ctx context.Context, id string) (*workspace.Works
 
 // Destroy marks the workspace destroyed. It returns a
 // *workspace.UnpreservedError when the workspace is dirty and opts.Force is
-// false, and nil for a workspace already destroyed.
-func (p *FakeProvider) Destroy(ctx context.Context, id string, opts workspace.DestroyOptions) error {
+// false, and an empty result for a workspace already destroyed. Forcing a
+// dirty workspace "rescues" it: the result carries
+// refs/cowflow/rescue/<workspace_id>, like the real Destroyer.
+func (p *FakeProvider) Destroy(ctx context.Context, id string, opts workspace.DestroyOptions) (workspace.DestroyResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err := p.enter(ctx, "Destroy"); err != nil {
-		return err
+		return workspace.DestroyResult{}, err
 	}
 	if p.DestroyErr != nil {
-		return p.DestroyErr
+		return workspace.DestroyResult{}, p.DestroyErr
 	}
 	st, ok := p.ws[id]
+	var res workspace.DestroyResult
 	switch {
 	case !ok:
-		return fmt.Errorf("fake provider: destroy %s: %w", id, workspace.ErrNotFound)
+		return res, fmt.Errorf("fake provider: destroy %s: %w", id, workspace.ErrNotFound)
 	case st.State == domain.WorkspaceDestroyed:
-		return nil
+		return res, nil
 	case !st.Dirty.Clean() && !opts.Force:
-		return &workspace.UnpreservedError{Report: cloneDirty(st.Dirty)}
+		return res, &workspace.UnpreservedError{Report: cloneDirty(st.Dirty)}
+	case !st.Dirty.Clean():
+		res.RescueRef = "refs/cowflow/rescue/" + id
 	}
 	st.State = domain.WorkspaceDestroyed
-	return nil
+	return res, nil
 }
 
 // SetDirty sets the dirty state Inspect reports and Destroy checks.

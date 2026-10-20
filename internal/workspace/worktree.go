@@ -152,7 +152,7 @@ func (p *WorktreeProvider) WithDestroyer(d *Destroyer) *WorktreeProvider {
 // Destroy destroys the workspace through the shared [Destroyer]: dirty
 // check, rescue with --force, audit, removal, pending_cleanup on a stuck
 // handle. The task branch is kept.
-func (p *WorktreeProvider) Destroy(ctx context.Context, id string, opts DestroyOptions) error {
+func (p *WorktreeProvider) Destroy(ctx context.Context, id string, opts DestroyOptions) (DestroyResult, error) {
 	return p.destroyer.Destroy(ctx, WorktreeName, id, opts)
 }
 

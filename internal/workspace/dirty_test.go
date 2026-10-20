@@ -244,9 +244,11 @@ func TestDirtyCleanAfterCreateCowClone(t *testing.T) {
 	r, err = insp.Dirty(ctx, *ws)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a.txt"}, r.Uncommitted)
-	require.Error(t, f.prov.Destroy(ctx, ws.ID, workspace.DestroyOptions{}), "dirty: refused without force")
+	_, err = f.prov.Destroy(ctx, ws.ID, workspace.DestroyOptions{})
+	require.Error(t, err, "dirty: refused without force")
 
-	require.NoError(t, f.prov.Destroy(ctx, ws.ID, workspace.DestroyOptions{Force: true}))
+	_, err = f.prov.Destroy(ctx, ws.ID, workspace.DestroyOptions{Force: true})
+	require.NoError(t, err)
 	assert.NoDirExists(t, ws.Path)
 	assert.DirExists(t, f.goldenDir(), "the golden tree is never touched")
 }

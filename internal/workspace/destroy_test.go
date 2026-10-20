@@ -158,7 +158,12 @@ func (f *destroyFixture) wire(mod func(d *workspace.DestroyerDeps)) {
 }
 
 func (f *destroyFixture) destroy(force bool) error {
-	return f.prov.Destroy(context.Background(), f.ws.ID, workspace.DestroyOptions{Force: force})
+	_, err := f.destroyWith(workspace.DestroyOptions{Force: force})
+	return err
+}
+
+func (f *destroyFixture) destroyWith(opts workspace.DestroyOptions) (workspace.DestroyResult, error) {
+	return f.prov.Destroy(context.Background(), f.ws.ID, opts)
 }
 
 func (f *destroyFixture) row(t *testing.T) domain.WorkspaceRecord {
@@ -260,13 +265,17 @@ func TestDestroyWritesAudit(t *testing.T) {
 		t.Parallel()
 		f := newDestroyFixture(t)
 		f.write(t, "wip.txt", "w\n")
-		require.NoError(t, f.destroy(true))
+		res, err := f.destroyWith(workspace.DestroyOptions{Force: true, Actor: workspace.Actor{Kind: "user", ID: "ana"}})
+		require.NoError(t, err)
 		audits := f.store.Audits()
 		require.Len(t, audits, 1)
 		a := audits[0].Audit
 		assert.True(t, a.Force)
 		assert.Equal(t, "refs/cowflow/rescue/"+f.ws.ID, a.RescueRef)
+		assert.Equal(t, a.RescueRef, res.RescueRef, "the caller learns where the work went")
 		assert.Contains(t, a.Dirty, "wip.txt")
+		assert.Equal(t, "user", a.ActorKind)
+		assert.Equal(t, "ana", a.ActorID)
 	})
 }
 
@@ -441,8 +450,10 @@ func TestDestroyStuckHandlePendingCleanup(t *testing.T) {
 			return os.RemoveAll(p)
 		}
 	})
-	err := f.destroy(false)
+	f.write(t, "wip.txt", "w\n")
+	res, err := f.destroyWith(workspace.DestroyOptions{Force: true})
 	require.ErrorIs(t, err, workspace.ErrPendingCleanup)
+	assert.Equal(t, workspace.RescueRef(f.ws.ID), res.RescueRef, "the rescue ref survives a pending_cleanup")
 	assert.Contains(t, err.Error(), held)
 	assert.Equal(t, []time.Duration{250 * time.Millisecond, time.Second, 4 * time.Second}, f.clock.Waits())
 
@@ -541,7 +552,7 @@ func TestDestroyNeverEscapesRoot(t *testing.T) {
 		}, 10, 40000)
 		require.NoError(t, err)
 		require.NoError(t, f.store.SetWorkspaceState(context.Background(), "wks_swapped", domain.WorkspaceReady, domain.StateChange{}))
-		err = f.prov.Destroy(context.Background(), "wks_swapped", workspace.DestroyOptions{Force: true})
+		_, err = f.prov.Destroy(context.Background(), "wks_swapped", workspace.DestroyOptions{Force: true})
 		require.ErrorIs(t, err, platform.ErrOutsideRoot)
 		assert.FileExists(t, filepath.Join(other, "keep.txt"))
 	})
@@ -632,11 +643,11 @@ func TestDestroyPendingMountVolume(t *testing.T) {
 func TestDestroyUnknownAndWrongProvider(t *testing.T) {
 	t.Parallel()
 	f := newDestroyFixture(t)
-	err := f.prov.Destroy(context.Background(), "wks_nope", workspace.DestroyOptions{})
+	_, err := f.prov.Destroy(context.Background(), "wks_nope", workspace.DestroyOptions{})
 	require.ErrorIs(t, err, workspace.ErrNotFound)
 
 	d := workspace.NewDestroyer(workspace.DestroyerDeps{Config: f.cfg, Store: f.store, Git: f.snap, Volumes: f.vols})
-	err = d.Destroy(context.Background(), workspace.ProviderCowClone, f.ws.ID, workspace.DestroyOptions{})
+	_, err = d.Destroy(context.Background(), workspace.ProviderCowClone, f.ws.ID, workspace.DestroyOptions{})
 	require.ErrorIs(t, err, workspace.ErrUnsupportedProvider)
 	assert.DirExists(t, f.ws.Path)
 }
@@ -647,7 +658,7 @@ func TestDestroyCowCloneDelegates(t *testing.T) {
 	g := &workspacetest.FakeGit{}
 	p := workspace.NewCowCloneProvider(workspace.CowCloneDeps{Git: g}).
 		WithDestroyer(workspace.NewDestroyer(workspace.DestroyerDeps{Store: store, Git: g}))
-	err := p.Destroy(context.Background(), "wks_nope", workspace.DestroyOptions{})
+	_, err := p.Destroy(context.Background(), "wks_nope", workspace.DestroyOptions{})
 	require.ErrorIs(t, err, workspace.ErrNotFound)
 }
 

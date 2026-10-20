@@ -131,52 +131,58 @@ func (d *Destroyer) ready() error {
 }
 
 // Destroy destroys workspace id, which provider created; see [Destroyer].
-// A destroyed workspace is a no-op.
-func (d *Destroyer) Destroy(ctx context.Context, provider, id string, opts DestroyOptions) error {
+// A destroyed workspace is a no-op. The result carries the rescue ref when a
+// rescue ran, also when the destroy then ends in an error such as
+// [ErrPendingCleanup]. A resumed destroy reports no ref: the rescue ran, and
+// was audited, in the call that started it.
+func (d *Destroyer) Destroy(ctx context.Context, provider, id string, opts DestroyOptions) (res DestroyResult, err error) {
 	if err := d.ready(); err != nil {
-		return fmt.Errorf("destroy workspace %s: %w", id, err)
+		return res, fmt.Errorf("destroy workspace %s: %w", id, err)
 	}
 	r, err := d.store.GetWorkspace(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("workspace %s: %w", id, ErrNotFound)
+		return res, fmt.Errorf("workspace %s: %w", id, ErrNotFound)
 	}
 	if err != nil {
-		return fmt.Errorf("workspace %s: %w", id, err)
+		return res, fmt.Errorf("workspace %s: %w", id, err)
 	}
 	if r.Provider != provider {
-		return fmt.Errorf("destroy workspace %s: provider %q is not %q: %w", id, r.Provider, provider, ErrUnsupportedProvider)
+		return res, fmt.Errorf("destroy workspace %s: provider %q is not %q: %w", id, r.Provider, provider, ErrUnsupportedProvider)
 	}
 	resume := false
 	switch r.State {
 	case domain.WorkspaceDestroyed:
-		return nil
+		return res, nil
 	case domain.WorkspaceReady:
 	case domain.WorkspacePendingCleanup:
 		resume = true // decided and audited before; finish the removal
 	case domain.WorkspacePendingMount:
-		return fmt.Errorf("destroy workspace %s: %w", id, ErrPendingMount)
+		return res, fmt.Errorf("destroy workspace %s: %w", id, ErrPendingMount)
 	default:
-		return fmt.Errorf("destroy workspace %s: workspace is %s", id, r.State)
+		return res, fmt.Errorf("destroy workspace %s: workspace is %s", id, r.State)
 	}
 	ws := recordToWorkspace(r)
 
 	// Probe first: an unmounted volume is pending_mount, not a bad path.
 	vol, missing, err := d.insp.probe(ctx, ws.Path)
 	if err != nil {
-		return fmt.Errorf("destroy workspace %s: refusing: %w", id, err)
+		return res, fmt.Errorf("destroy workspace %s: refusing: %w", id, err)
 	}
 	root, path, err := confineWorkspace(d.cfg.Workspace.Root, ws.Path)
 	if err != nil {
-		return fmt.Errorf("destroy workspace %s: refusing: %w", id, err)
+		return res, fmt.Errorf("destroy workspace %s: refusing: %w", id, err)
 	}
 	if missing && r.Filesystem != "" && vol.Filesystem != r.Filesystem {
 		// The path may be on a volume that is not mounted right now: marking
 		// it destroyed would orphan whatever comes back on remount.
-		return fmt.Errorf("destroy workspace %s: refusing: path %s is missing and its volume is %q, recorded %q: %w",
+		return res, fmt.Errorf("destroy workspace %s: refusing: path %s is missing and its volume is %q, recorded %q: %w",
 			id, path, vol.Filesystem, r.Filesystem, ErrPendingMount)
 	}
 
-	audit := domain.StateAudit{Action: "destroy", Force: opts.Force}
+	audit := domain.StateAudit{
+		Action: "destroy", Force: opts.Force,
+		ActorKind: opts.Actor.Kind, ActorID: opts.Actor.ID,
+	}
 	switch {
 	case resume:
 		audit.Dirty = "resumed after pending_cleanup"
@@ -185,20 +191,21 @@ func (d *Destroyer) Destroy(ctx context.Context, provider, id string, opts Destr
 	default:
 		rep, err := d.insp.Dirty(ctx, ws)
 		if err != nil {
-			return fmt.Errorf("destroy workspace %s: refusing: %w", id, err) // fail closed, even with --force
+			return res, fmt.Errorf("destroy workspace %s: refusing: %w", id, err) // fail closed, even with --force
 		}
 		if !rep.Clean() {
 			if !opts.Force {
-				return &UnpreservedError{Report: rep}
+				return res, &UnpreservedError{Report: rep}
 			}
 			ref, err := d.rescuer.Rescue(ctx, ws, rep)
 			if err != nil {
 				if !errors.Is(err, ErrRescueFailed) {
 					err = fmt.Errorf("%w: %w", ErrRescueFailed, err)
 				}
-				return fmt.Errorf("destroy workspace %s: %w", id, err)
+				return res, fmt.Errorf("destroy workspace %s: %w", id, err)
 			}
 			audit.RescueRef = ref
+			res.RescueRef = ref
 			audit.Dirty = (&UnpreservedError{Report: rep}).Error()
 		}
 	}
@@ -206,7 +213,7 @@ func (d *Destroyer) Destroy(ctx context.Context, provider, id string, opts Destr
 	repo, err := d.repoOf(ctx, path)
 	if err != nil {
 		if !resume && !missing {
-			return fmt.Errorf("destroy workspace %s: refusing: %w", id, err)
+			return res, fmt.Errorf("destroy workspace %s: refusing: %w", id, err)
 		}
 		// The worktree is already gone or broken: the directory is still
 		// removed, but its admin entry stays until `git worktree prune`.
@@ -217,17 +224,17 @@ func (d *Destroyer) Destroy(ctx context.Context, provider, id string, opts Destr
 
 	// Audit before any deletion, in the transaction of the state change.
 	if err := d.store.SetWorkspaceState(ctx, id, domain.WorkspacePendingCleanup, domain.StateChange{Audit: &audit}); err != nil {
-		return fmt.Errorf("destroy workspace %s: audit: %w", id, err)
+		return res, fmt.Errorf("destroy workspace %s: audit: %w", id, err)
 	}
 	if err := d.removeWithRetry(ctx, ws, root, path, repo); err != nil {
-		return fmt.Errorf("destroy workspace %s: %w", id, err)
+		return res, fmt.Errorf("destroy workspace %s: %w", id, err)
 	}
 	if err := d.store.SetWorkspaceState(ctx, id, domain.WorkspaceDestroyed, domain.StateChange{}); err != nil {
-		return fmt.Errorf("destroy workspace %s: mark destroyed: %w", id, err)
+		return res, fmt.Errorf("destroy workspace %s: mark destroyed: %w", id, err)
 	}
 	d.log.Info("workspace destroyed", "project_id", ws.ProjectID, "task_id", ws.TaskID,
 		"workspace_id", id, "provider", provider, "force", opts.Force, "rescue_ref", audit.RescueRef)
-	return nil
+	return res, nil
 }
 
 // removeWithRetry removes the workspace; a stuck handle records

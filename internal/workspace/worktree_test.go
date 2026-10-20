@@ -179,7 +179,8 @@ func TestWorktreeCreateExistingPathUntouched(t *testing.T) {
 func TestWorktreeDestroyWithoutDestroyerFails(t *testing.T) {
 	t.Parallel()
 	p := workspace.NewWorktreeProvider(&workspacetest.FakeGit{}, nil)
-	require.Error(t, p.Destroy(context.Background(), "wks_x", workspace.DestroyOptions{}), "an error, not a panic")
+	_, err := p.Destroy(context.Background(), "wks_x", workspace.DestroyOptions{})
+	require.Error(t, err, "an error, not a panic")
 }
 
 // assertNoAdminEntry checks that the repository has no worktree besides the

@@ -115,6 +115,7 @@ type managerAPI interface {
 	Create(ctx context.Context, req CreateRequest) (*Workspace, Selection, error)
 	Inspect(ctx context.Context, id string) (*WorkspaceStatus, error)
 	Destroy(ctx context.Context, id string, opts DestroyOptions) error
+	DestroyWithResult(ctx context.Context, id string, opts DestroyOptions) (DestroyResult, error)
 	List(ctx context.Context, f ListFilter) ([]Workspace, error)
 	ExpandScope(ctx context.Context, id string, add []string) error
 }
@@ -228,23 +229,34 @@ func (m *Manager) Inspect(ctx context.Context, id string) (*WorkspaceStatus, err
 // destroyed workspace is a no-op; a pending_mount one is [ErrPendingMount].
 // Dirty checks, rescue and pending_cleanup are the shared [Destroyer]'s,
 // which every provider delegates to (S1-T14).
+//
+// Destroy drops the [DestroyResult]; callers that report the rescue ref use
+// [Manager.DestroyWithResult].
 func (m *Manager) Destroy(ctx context.Context, id string, opts DestroyOptions) error {
+	_, err := m.DestroyWithResult(ctx, id, opts)
+	return err
+}
+
+// DestroyWithResult is [Manager.Destroy] that also returns the rescue ref the
+// destroy created, if any. The result is meaningful with a nil error and with
+// [ErrPendingCleanup] after a rescue; opts.Actor is recorded in the audit row.
+func (m *Manager) DestroyWithResult(ctx context.Context, id string, opts DestroyOptions) (DestroyResult, error) {
 	r, err := m.get(ctx, id)
 	if err != nil {
-		return err
+		return DestroyResult{}, err
 	}
 	switch r.State {
 	case domain.WorkspaceDestroyed:
-		return nil
+		return DestroyResult{}, nil
 	case domain.WorkspaceReady, domain.WorkspacePendingCleanup:
 	case domain.WorkspacePendingMount:
-		return fmt.Errorf("destroy workspace %s: %w", id, ErrPendingMount)
+		return DestroyResult{}, fmt.Errorf("destroy workspace %s: %w", id, ErrPendingMount)
 	default:
-		return fmt.Errorf("destroy workspace %s: workspace is %s", id, r.State)
+		return DestroyResult{}, fmt.Errorf("destroy workspace %s: workspace is %s", id, r.State)
 	}
 	p := m.providerByName(r.Provider)
 	if p == nil {
-		return fmt.Errorf("destroy workspace %s: provider %q: %w", id, r.Provider, ErrUnsupportedProvider)
+		return DestroyResult{}, fmt.Errorf("destroy workspace %s: provider %q: %w", id, r.Provider, ErrUnsupportedProvider)
 	}
 	return p.Destroy(ctx, id, opts)
 }

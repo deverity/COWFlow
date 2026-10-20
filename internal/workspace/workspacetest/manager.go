@@ -139,8 +139,16 @@ func (m *FakeManager) Inspect(ctx context.Context, id string) (*workspace.Worksp
 	return m.provider().Inspect(ctx, id)
 }
 
-// Destroy destroys the workspace through Provider.
+// Destroy destroys the workspace through Provider and drops the result, like
+// workspace.Manager.Destroy.
 func (m *FakeManager) Destroy(ctx context.Context, id string, opts workspace.DestroyOptions) error {
+	_, err := m.DestroyWithResult(ctx, id, opts)
+	return err
+}
+
+// DestroyWithResult destroys the workspace through Provider and returns the
+// rescue ref, like workspace.Manager.DestroyWithResult.
+func (m *FakeManager) DestroyWithResult(ctx context.Context, id string, opts workspace.DestroyOptions) (workspace.DestroyResult, error) {
 	return m.provider().Destroy(ctx, id, opts)
 }
 

@@ -91,8 +91,8 @@ func (p *testProvider) Inspect(context.Context, string) (*workspace.WorkspaceSta
 	return nil, errors.ErrUnsupported
 }
 
-func (p *testProvider) Destroy(context.Context, string, workspace.DestroyOptions) error {
-	return errors.ErrUnsupported
+func (p *testProvider) Destroy(context.Context, string, workspace.DestroyOptions) (workspace.DestroyResult, error) {
+	return workspace.DestroyResult{}, errors.ErrUnsupported
 }
 
 func (p *testProvider) Specs() []workspace.WorkspaceSpec {
