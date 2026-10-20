@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filesystem, and removes the worktree, directory and admin entry when a
   create fails. An existing branch is `ErrBranchExists`; an existing path is
   never touched. Inspect and destroy follow in later tasks.
+- `internal/workspace` (Linux, macOS): the block-clone primitive for `cow_clone`
+  on the other two platforms. Linux clones with the `FICLONE` ioctl (btrfs,
+  XFS with `reflink=1`), macOS with `clonefile(2)` (APFS); both refuse
+  symlinks and directories, keep the permission bits and modification time,
+  never copy bytes, and report `ErrCloneUnsupported` (ext4, XFS without
+  reflink, another volume) without leaving a destination file.
 - `internal/workspace` (Windows): the block-clone primitive for `cow_clone`.
   It clones a file with `FSCTL_DUPLICATE_EXTENTS_TO_FILE` in cluster-aligned
   chunks below 4 GiB, after matching the sparse and integrity-stream settings,
