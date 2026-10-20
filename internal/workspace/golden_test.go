@@ -431,6 +431,9 @@ func TestGoldenGCLRUAndBudget(t *testing.T) {
 	assert.Equal(t, []string{shaN(2), shaN(3), shaN(1)},
 		[]string{list[0].BaseSHA, list[1].BaseSHA, list[2].BaseSHA}, "least recently used first")
 	assert.Equal(t, g2.Dir, list[0].Dir)
+	for _, gi := range list {
+		assert.True(t, strings.HasPrefix(gi.ID, "gld_"), "the row identity is listed: %q", gi.ID)
+	}
 
 	rep, err := c.GC(ctx, goldenProject, 300) // 600 bytes cached
 	require.NoError(t, err)

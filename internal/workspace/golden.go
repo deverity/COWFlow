@@ -51,6 +51,7 @@ type Golden struct {
 // GoldenInfo is one golden tree as `cowflow golden list` shows it.
 type GoldenInfo struct {
 	Golden
+	ID         string // gld_<ULID>, the row identity
 	State      domain.GoldenState
 	InUse      int
 	LastUsedAt time.Time
@@ -595,6 +596,7 @@ func (c *GoldenCache) List(ctx context.Context, projectID string) ([]GoldenInfo,
 			return nil, err
 		}
 		out = append(out, GoldenInfo{
+			ID: g.ID,
 			Golden: Golden{
 				ProjectID: g.ProjectID, BaseSHA: g.BaseSHA, Dir: dir, IndexFile: goldenIndexFile(dir),
 				SizeBytes: g.SizeBytes, FileCount: g.FileCount,
