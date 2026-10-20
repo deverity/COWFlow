@@ -105,3 +105,22 @@ func TestRepo_IgnoresUserConfig(t *testing.T) {
 		gitOut(t, r, "log", "-1", "--format=%cn <%ce>"))
 	assert.Equal(t, "false", gitOut(t, r, "config", "core.autocrlf"))
 }
+
+func TestHermeticGit_FixedIdentity(t *testing.T) {
+	env, runner := harness.HermeticGit(t)
+	assert.Contains(t, env, "GIT_CONFIG_NOSYSTEM=1")
+	dir := t.TempDir()
+	_, err := runner.Run(context.Background(), dir, "init", "-q", "--template=")
+	require.NoError(t, err)
+	out, err := runner.Run(context.Background(), dir, "var", "GIT_AUTHOR_IDENT")
+	require.NoError(t, err)
+	assert.Equal(t, "COWFlow Harness <harness@cowflow.invalid> 946684800 +0000", strings.TrimSpace(string(out)))
+}
+
+func TestScratchDir_FreshAndEmpty(t *testing.T) {
+	a, b := harness.ScratchDir(t), harness.ScratchDir(t)
+	assert.NotEqual(t, a, b)
+	entries, err := os.ReadDir(a)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+}

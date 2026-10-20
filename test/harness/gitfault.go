@@ -23,7 +23,11 @@ type GitFault struct {
 
 // FaultyRunner is a git.Runner decorator that injects GitFaults and records
 // every call. Calls that match no fault pass through to Inner. Set Faults
-// before sharing the runner, or use Inject while it is in use.
+// before sharing the runner, or use Inject and Clear while it is in use.
+//
+// It has no per-call options (git.OptsRunner), so a git.Client over it fails
+// the index, export, snapshot and sparse plumbing with
+// git.ErrOptsUnsupported; wrap it in FaultyOptsRunner to pass them through.
 type FaultyRunner struct {
 	Inner  git.Runner
 	mu     sync.Mutex
@@ -33,11 +37,27 @@ type FaultyRunner struct {
 
 var _ git.Runner = (*FaultyRunner)(nil)
 
+// FaultyOptsRunner is a FaultyRunner that also takes per-call options, for
+// tests that drive the whole git.Client, including the plumbing that runs
+// with GIT_INDEX_FILE or stdin. Calls with options share the faults and the
+// record of the FaultyRunner.
+type FaultyOptsRunner struct{ *FaultyRunner }
+
+var _ git.OptsRunner = FaultyOptsRunner{}
+
 // Inject appends a fault; it is safe to call while Run is in use.
 func (f *FaultyRunner) Inject(fault GitFault) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Faults = append(f.Faults, fault)
+}
+
+// Clear removes every fault, so later calls all pass through to Inner. It is
+// safe to call while Run is in use.
+func (f *FaultyRunner) Clear() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Faults = nil
 }
 
 // Recorded returns a copy of the recorded argv lists; it is safe to call
@@ -57,6 +77,31 @@ func (f *FaultyRunner) Recorded() [][]string {
 // runner's: ExitCode -1 plus the context error for timeouts, the real exit
 // code otherwise.
 func (f *FaultyRunner) Run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return f.run(ctx, args, func(argv []string) ([]byte, error) {
+		if f.Inner == nil {
+			return nil, fmt.Errorf("harness: FaultyRunner has no Inner runner for git %v", argv)
+		}
+		return f.Inner.Run(ctx, dir, argv...)
+	})
+}
+
+// RunWith is Run with per-call options. The same faults apply; a call that
+// matches none passes through to Inner's RunWith. An Inner without per-call
+// options fails the call with git.ErrOptsUnsupported, as git.Client itself
+// would.
+func (f FaultyOptsRunner) RunWith(ctx context.Context, dir string, o git.RunOpts, args ...string) ([]byte, error) {
+	return f.run(ctx, args, func(argv []string) ([]byte, error) {
+		or, ok := f.Inner.(git.OptsRunner)
+		if !ok {
+			return nil, fmt.Errorf("harness: %w: %T", git.ErrOptsUnsupported, f.Inner)
+		}
+		return or.RunWith(ctx, dir, o, argv...)
+	})
+}
+
+// run records argv and applies the first matching fault; delegate runs the
+// real call.
+func (f *FaultyRunner) run(ctx context.Context, args []string, delegate func(argv []string) ([]byte, error)) ([]byte, error) {
 	argv := slices.Clone(args)
 	f.mu.Lock()
 	f.Calls = append(f.Calls, argv)
@@ -71,7 +116,7 @@ func (f *FaultyRunner) Run(ctx context.Context, dir string, args ...string) ([]b
 	f.mu.Unlock()
 
 	if fault == nil {
-		return f.delegate(ctx, dir, argv)
+		return delegate(argv)
 	}
 	if fault.Timeout {
 		<-ctx.Done()
@@ -93,7 +138,7 @@ func (f *FaultyRunner) Run(ctx context.Context, dir string, args ...string) ([]b
 		out = []byte(fault.Stdout)
 	} else {
 		var err error
-		if out, err = f.delegate(ctx, dir, argv); err != nil {
+		if out, err = delegate(argv); err != nil {
 			return out, err
 		}
 	}
@@ -101,13 +146,6 @@ func (f *FaultyRunner) Run(ctx context.Context, dir string, args ...string) ([]b
 		out = out[:fault.TruncateAt]
 	}
 	return out, nil
-}
-
-func (f *FaultyRunner) delegate(ctx context.Context, dir string, argv []string) ([]byte, error) {
-	if f.Inner == nil {
-		return nil, fmt.Errorf("harness: FaultyRunner has no Inner runner for git %v", argv)
-	}
-	return f.Inner.Run(ctx, dir, argv...)
 }
 
 // hasPrefix reports whether argv starts with prefix (an empty prefix always

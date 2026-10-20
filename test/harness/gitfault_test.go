@@ -145,3 +145,60 @@ func TestFaultyRunner_WrapsRealRepo(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "develop\n", string(out))
 }
+
+// optsStub is a stubRunner that also takes per-call options.
+type optsStub struct {
+	stubRunner
+	opts []git.RunOpts
+}
+
+func (s *optsStub) RunWith(_ context.Context, _ string, o git.RunOpts, _ ...string) ([]byte, error) {
+	s.calls++
+	s.opts = append(s.opts, o)
+	return []byte(s.out), nil
+}
+
+func TestFaultyOptsRunner_AppliesFaultsAndPassesOptions(t *testing.T) {
+	inner := &optsStub{stubRunner: stubRunner{out: "abcdef"}}
+	f := &harness.FaultyRunner{Inner: inner, Faults: []harness.GitFault{
+		{Match: []string{"write-tree"}, ExitCode: 128},
+		{Match: []string{"ls-files"}, TruncateAt: 3},
+	}}
+	opts := git.RunOpts{Env: []string{"GIT_INDEX_FILE=/tmp/x"}}
+
+	_, err := harness.FaultyOptsRunner{FaultyRunner: f}.RunWith(context.Background(), "/repo", opts, "write-tree")
+	var ge *git.Error
+	require.ErrorAs(t, err, &ge)
+	assert.Equal(t, 128, ge.ExitCode)
+
+	out, err := harness.FaultyOptsRunner{FaultyRunner: f}.RunWith(context.Background(), "/repo", opts, "ls-files")
+	require.NoError(t, err)
+	assert.Equal(t, "abc", string(out))
+
+	out, err = harness.FaultyOptsRunner{FaultyRunner: f}.RunWith(context.Background(), "/repo", opts, "read-tree")
+	require.NoError(t, err)
+	assert.Equal(t, "abcdef", string(out))
+	assert.Equal(t, 2, inner.calls, "the exit-code fault never reaches Inner")
+	require.Len(t, inner.opts, 2)
+	assert.Equal(t, opts.Env, inner.opts[0].Env)
+	assert.Equal(t, [][]string{{"write-tree"}, {"ls-files"}, {"read-tree"}}, f.Recorded())
+}
+
+func TestFaultyOptsRunner_NeedsOptsInner(t *testing.T) {
+	f := &harness.FaultyRunner{Inner: &stubRunner{}}
+	_, err := harness.FaultyOptsRunner{FaultyRunner: f}.RunWith(context.Background(), "/repo", git.RunOpts{}, "status")
+	assert.ErrorIs(t, err, git.ErrOptsUnsupported)
+}
+
+func TestFaultyRunner_Clear(t *testing.T) {
+	inner := &stubRunner{out: "ok"}
+	f := &harness.FaultyRunner{Inner: inner}
+	f.Inject(harness.GitFault{ExitCode: 1})
+	_, err := f.Run(context.Background(), "/repo", "status")
+	require.Error(t, err)
+
+	f.Clear()
+	out, err := f.Run(context.Background(), "/repo", "status")
+	require.NoError(t, err)
+	assert.Equal(t, "ok", string(out))
+}

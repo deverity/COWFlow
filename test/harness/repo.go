@@ -75,13 +75,31 @@ func NewRepo(t testing.TB, opts ...RepoOption) *Repo {
 	if err := os.MkdirAll(cfg.dir, 0o750); err != nil {
 		t.Fatalf("harness: create repo dir: %v", err)
 	}
+	env, runner := HermeticGit(t)
+	r := &Repo{Dir: cfg.dir, Env: env, Runner: runner}
 
+	// An empty --template keeps system hook samples and other host files out.
+	r.git(t, "init", "-q", "--template=", "-b", cfg.branch)
+	r.git(t, "config", "core.autocrlf", "false")
+	if cfg.attributes != "" {
+		r.Commit(t, "chore: add gitattributes", map[string]string{".gitattributes": cfg.attributes})
+	}
+	return r
+}
+
+// HermeticGit returns the Git environment NewRepo uses (an empty global
+// config, no system config, a private HOME and a fixed author, committer and
+// date) and a runner over it with a 30 s per-call timeout. A test that
+// creates its repository by other means, such as benchrepo.Generate, uses it
+// to run git hermetically. It skips the test when git is not on PATH.
+func HermeticGit(t testing.TB) (env []string, runner git.Runner) {
+	t.Helper()
 	home := t.TempDir()
 	globalCfg := filepath.Join(home, "gitconfig")
 	if err := os.WriteFile(globalCfg, nil, 0o600); err != nil {
 		t.Fatalf("harness: write empty git config: %v", err)
 	}
-	env := []string{
+	env = []string{
 		"GIT_CONFIG_GLOBAL=" + globalCfg,
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=" + repoName,
@@ -94,22 +112,22 @@ func NewRepo(t testing.TB, opts ...RepoOption) *Repo {
 		"USERPROFILE=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, "xdg"),
 	}
-	runner, err := git.NewExecRunner(git.ExecOptions{Timeout: repoGitTimeout, ExtraEnv: env})
+	er, err := git.NewExecRunner(git.ExecOptions{Timeout: repoGitTimeout, ExtraEnv: env})
 	if errors.Is(err, git.ErrNotFound) {
 		t.Skip("git not on PATH")
 	}
 	if err != nil {
 		t.Fatalf("harness: git runner: %v", err)
 	}
-	r := &Repo{Dir: cfg.dir, Env: env, Runner: runner}
+	return env, er
+}
 
-	// An empty --template keeps system hook samples and other host files out.
-	r.git(t, "init", "-q", "--template=", "-b", cfg.branch)
-	r.git(t, "config", "core.autocrlf", "false")
-	if cfg.attributes != "" {
-		r.Commit(t, "chore: add gitattributes", map[string]string{".gitattributes": cfg.attributes})
-	}
-	return r
+// ScratchDir returns a fresh directory that t.Cleanup removes: on tmpfs
+// (/dev/shm) on Linux when that is writable, otherwise under t.TempDir()
+// (SCOPE.md §23 decision 34). It is NewRepo's default location.
+func ScratchDir(t testing.TB) string {
+	t.Helper()
+	return defaultRepoDir(t)
 }
 
 // defaultRepoDir returns a fresh directory on tmpfs (Linux) or under
