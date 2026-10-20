@@ -164,8 +164,8 @@ func (p pendingMountAdmin) Inspect(ctx context.Context, id string) (*workspace.W
 	return st, fmt.Errorf("inspect workspace %s: %w", id, workspace.ErrPendingMount)
 }
 
-func (p pendingMountAdmin) Destroy(context.Context, string, workspace.DestroyOptions) error {
-	return nil
+func (p pendingMountAdmin) DestroyWithResult(context.Context, string, workspace.DestroyOptions) (workspace.DestroyResult, error) {
+	return workspace.DestroyResult{}, nil
 }
 
 func TestWorkspaceDestroyRefusesWithoutForce(t *testing.T) {
@@ -268,4 +268,44 @@ func TestWorkspaceDestroyHelpMentionsIgnoredFiles(t *testing.T) {
 	r := e.run("workspace", "destroy", "--help")
 	require.Equal(t, ExitOK, r.code, r.stderr)
 	assert.Contains(t, r.stdout, "ignored files are not preserved")
+}
+
+// rescuingAdmin destroys like a stuck handle after a rescue: pending_cleanup
+// together with the rescue ref; it records the options it was called with.
+type rescuingAdmin struct {
+	inner *workspacetest.FakeManager
+	opts  workspace.DestroyOptions
+}
+
+func (r *rescuingAdmin) Inspect(ctx context.Context, id string) (*workspace.WorkspaceStatus, error) {
+	return r.inner.Inspect(ctx, id)
+}
+
+func (r *rescuingAdmin) DestroyWithResult(_ context.Context, id string, opts workspace.DestroyOptions) (workspace.DestroyResult, error) {
+	r.opts = opts
+	return workspace.DestroyResult{RescueRef: workspace.RescueRef(id)},
+		fmt.Errorf("destroy workspace %s: %w: in use", id, workspace.ErrPendingCleanup)
+}
+
+func TestWorkspaceDestroyPendingCleanupStillReportsRescue(t *testing.T) {
+	e := newWSEnv(t)
+	adm := &rescuingAdmin{inner: e.mgr}
+	deps := Deps{
+		ConfigPath: func() (string, error) { return e.cfgPath, nil },
+		OpenTasks: func(context.Context, *config.Config, string) (TaskBackend, error) {
+			return TaskBackend{Store: e.store, Lister: e.mgr, Admin: adm}, nil
+		},
+	}
+	var out, errb bytes.Buffer
+	code := Execute(context.Background(), []string{"workspace", "destroy", wsID1, "--force"},
+		IOStreams{In: strings.NewReader(""), Out: &out, Err: &errb}, deps)
+	r := result{code: code, stdout: out.String(), stderr: errb.String()}
+	assert.Equal(t, ExitState, r.code)
+	ref := "refs/cowflow/rescue/" + wsID1
+	assert.Contains(t, r.stderr, "rescued to "+ref+" (restore with: git cherry-pick -n "+ref+")")
+	assert.Contains(t, r.stderr, "cleanup pending")
+	assert.Empty(t, r.stdout)
+	assert.Equal(t, "user", adm.opts.Actor.Kind, "the audit actor is the OS user")
+	assert.NotEmpty(t, adm.opts.Actor.ID)
+	assert.True(t, adm.opts.Force)
 }

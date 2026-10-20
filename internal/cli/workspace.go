@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/user"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -19,7 +20,7 @@ import (
 // Manager. *workspace.Manager implements it.
 type WorkspaceAdmin interface {
 	Inspect(ctx context.Context, id string) (*workspace.WorkspaceStatus, error)
-	Destroy(ctx context.Context, id string, opts workspace.DestroyOptions) error
+	DestroyWithResult(ctx context.Context, id string, opts workspace.DestroyOptions) (workspace.DestroyResult, error)
 }
 
 // maxShown is how many unpreserved files or commits the refusal names before
@@ -268,31 +269,37 @@ func runWorkspaceDestroy(ctx context.Context, ios IOStreams, deps Deps, st *runS
 	}
 	defer o.close()
 
-	// With --force a dirty workspace is rescued by Destroy, which does not
-	// report it; read the state first to tell the user where the work went.
-	var willRescue bool
-	if force {
-		if s, ierr := adm.Inspect(ctx, id); ierr == nil && s != nil {
-			willRescue = !s.Dirty.Clean()
+	// The audit actor of a daemonless call is the OS user (SCOPE.md §17).
+	res, err := adm.DestroyWithResult(ctx, id, workspace.DestroyOptions{Force: force, Actor: osActor()})
+	if err != nil {
+		// The rescue may have run before the cleanup stalled: say where the
+		// work went, whatever the exit code.
+		if res.RescueRef != "" {
+			_, _ = fmt.Fprintf(ios.Err, rescueLine+"\n", res.RescueRef)
 		}
-	}
-	// PENDING: the audit actor of a daemonless call is the OS user; the
-	// Destroyer records no actor and DestroyOptions has no field for one
-	// (AG-WS).
-	if err := adm.Destroy(ctx, id, workspace.DestroyOptions{Force: force}); err != nil {
 		return destroyErr(id, err)
 	}
-	doc := destroyDoc{ID: id, Destroyed: true}
-	if willRescue {
-		doc.RescueRef = workspace.RescueRef(id)
-	}
+	doc := destroyDoc{ID: id, Destroyed: true, RescueRef: res.RescueRef}
 	return printResult(ios, st.json, doc, func(w io.Writer) error {
 		if doc.RescueRef != "" {
-			_, _ = fmt.Fprintf(w, "rescued to %[1]s (restore with: git cherry-pick -n %[1]s)\n", doc.RescueRef)
+			_, _ = fmt.Fprintf(w, rescueLine+"\n", doc.RescueRef)
 		}
 		_, err := fmt.Fprintf(w, "destroyed workspace %s\n", id)
 		return err
 	})
+}
+
+// rescueLine tells where a destroy saved unpreserved work.
+const rescueLine = "rescued to %[1]s (restore with: git cherry-pick -n %[1]s)"
+
+// osActor is the audit actor of a daemonless CLI call: kind "user" and the
+// OS user name.
+func osActor() workspace.Actor {
+	id := "unknown"
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		id = u.Username
+	}
+	return workspace.Actor{Kind: "user", ID: id}
 }
 
 // destroyDoc is the --json document of workspace destroy.
