@@ -761,7 +761,9 @@ func TestListAndExpandScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, ws)
 
-	require.ErrorIs(t, m.ExpandScope(context.Background(), w.ID, []string{"x"}), errors.ErrUnsupported)
+	// A workspace that is not sparse already has every file.
+	require.NoError(t, m.ExpandScope(context.Background(), w.ID, []string{"x"}))
+	require.ErrorIs(t, m.ExpandScope(context.Background(), "wks_missing", []string{"x"}), workspace.ErrNotFound)
 }
 
 func TestDestroyDelegatesToProvider(t *testing.T) {

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/workspace`: sparse checkout from the task paths in both providers.
+  The cone set is the normalized `--paths` plus `contracts`. `git_worktree`
+  adds the worktree without checkout, sets the cone and populates it;
+  `cow_clone` clones only the files the cone mode of Git would check out,
+  seeds the index, then sets the cone, so `git status` is clean and nothing is
+  written twice. `Manager.ExpandScope` widens the scope of a ready workspace;
+  while HEAD is the base commit, `cow_clone` clones the new files from the
+  golden tree first.
 - `internal/workspace`: dirty detection and the shared inspect. `Dirty` reads
   Git now and lists uncommitted paths (ignored files and `.env.cowflow` are not
   counted) and commits not under the shared ref namespace; any Git failure is

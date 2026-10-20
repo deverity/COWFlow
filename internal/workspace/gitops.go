@@ -30,6 +30,7 @@ type GitOps interface {
 
 	SparseSet(ctx context.Context, worktree string, dirs []string) error // cone mode, via stdin
 	SparseDisable(ctx context.Context, worktree string) error
+	SparseList(ctx context.Context, worktree string) ([]string, error) // the cone directories now in force
 
 	Status(ctx context.Context, worktree string) ([]git.StatusEntry, error)
 	Unpublished(ctx context.Context, worktree, baseSHA, refNamespace string) ([]string, error)

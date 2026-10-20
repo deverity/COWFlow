@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -212,11 +213,17 @@ func (p *CowCloneProvider) probe(ctx context.Context, root string) (err error) {
 //     then the per-worktree config (core.autocrlf=false, core.longpaths=true
 //     on Windows, §7);
 //  3. clone every golden file into the worktree with 16 parallel workers,
-//     creating directories and replicating symlinks; nothing is copied;
-//  4. check the number of files against the golden's file count;
+//     creating directories and replicating symlinks; nothing is copied.
+//     With spec.Sparse.Enabled only the files git's cone mode would check
+//     out for the sparse set are cloned (§6.6);
+//  4. check the number of files against the golden's file count (without
+//     sparse; a sparse clone can only be checked not to exceed it);
 //  5. seed the worktree's own index from the golden index (§23 decision
 //     39);
-//  6. check that HEAD is spec.BaseSHA.
+//  6. with sparse, `sparse-checkout set` on that index (§23 decision 39):
+//     it marks the unmatched entries skip-worktree, and as their files
+//     were never cloned there is nothing to delete;
+//  7. check that HEAD is spec.BaseSHA.
 //
 // spec.Path must not exist; an existing path is [ErrPathExists] and is never
 // touched. An existing branch is [ErrBranchExists]. Without block clone
@@ -224,9 +231,6 @@ func (p *CowCloneProvider) probe(ctx context.Context, root string) (err error) {
 // anything is written. Any other failure removes the worktree, the directory
 // and the admin entry on a detached context; the task branch is the
 // Manager's to delete.
-//
-// PENDING S1-T12: with spec.Sparse.Enabled the whole golden tree is still
-// cloned; the cone filter and sparse-checkout set land with S1-T12.
 func (p *CowCloneProvider) Create(ctx context.Context, spec WorkspaceSpec) (_ *Workspace, err error) {
 	start := time.Now()
 	if err := p.ready(); err != nil {
@@ -267,15 +271,28 @@ func (p *CowCloneProvider) Create(ctx context.Context, spec WorkspaceSpec) (_ *W
 	if err = p.wt.configure(ctx, spec.Path); err != nil {
 		return nil, err
 	}
-	files, err := p.cloneTree(ctx, g.Dir, spec.Path)
+	var keep func(rel string, isDir bool) bool
+	var set []string
+	if spec.Sparse.Enabled {
+		if set, err = SparseSet(spec.Sparse.Paths); err != nil {
+			return nil, fmt.Errorf("cow_clone create: %w", err)
+		}
+		keep = newConeMatcher(set).Match
+	}
+	files, err := p.cloneTree(ctx, g.Dir, spec.Path, keep)
 	if err != nil {
 		return nil, fmt.Errorf("cow_clone create: clone golden tree %s: %w", g.BaseSHA, err)
 	}
-	if files != g.FileCount {
+	if keep == nil && files != g.FileCount || keep != nil && files > g.FileCount {
 		return nil, fmt.Errorf("cow_clone create: cloned %d files, the golden tree %s has %d", files, g.BaseSHA, g.FileCount)
 	}
 	if err = p.seeder.Seed(ctx, spec.Path, g, spec.BaseSHA); err != nil {
 		return nil, fmt.Errorf("cow_clone create: seed index: %w", err)
+	}
+	if keep != nil {
+		if err = p.git.SparseSet(ctx, spec.Path, set); err != nil {
+			return nil, fmt.Errorf("cow_clone create: sparse set: %w", err)
+		}
 	}
 	head, err := p.git.Head(ctx, spec.Path)
 	if err != nil {
@@ -301,7 +318,12 @@ func (p *CowCloneProvider) Create(ctx context.Context, spec WorkspaceSpec) (_ *W
 // goroutines calling the Cloner. The first error cancels the rest. It
 // returns the number of regular files and symlinks created, and waits for
 // every worker before returning.
-func (p *CowCloneProvider) cloneTree(ctx context.Context, src, dst string) (int, error) {
+//
+// A non-nil keep (slash-separated path relative to src, and whether it is a
+// directory) selects what is replicated: a directory it rejects is skipped
+// with its subtree, a file it rejects is not cloned.
+func (p *CowCloneProvider) cloneTree(ctx context.Context, src, dst string,
+	keep func(rel string, isDir bool) bool) (int, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	jobs := make(chan [2]string, cloneQueue)
@@ -340,7 +362,12 @@ func (p *CowCloneProvider) cloneTree(ctx context.Context, src, dst string) (int,
 			// a repository between workspaces.
 			return fmt.Errorf("golden tree holds %s", path)
 		}
-		// PENDING S1-T12: the sparse cone filter goes here.
+		if keep != nil && !keep(filepath.ToSlash(rel), d.IsDir()) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		target := filepath.Join(dst, rel)
 		switch t := d.Type(); {
 		case t.IsDir():
@@ -397,4 +424,77 @@ func (*CowCloneProvider) Inspect(context.Context, string) (*WorkspaceStatus, err
 // Destroy is not implemented until the shared destroy (S1-T14) lands.
 func (*CowCloneProvider) Destroy(context.Context, string, DestroyOptions) error {
 	return errors.ErrUnsupported
+}
+
+// expandScope widens the sparse scope of w by add. While HEAD is still the
+// base commit, the newly matching files are cloned from the golden tree
+// first, so `sparse-checkout set` finds them up to date and writes no full
+// copies; after a commit the golden no longer describes the worktree and git
+// materializes them (correctness first).
+func (p *CowCloneProvider) expandScope(ctx context.Context, w Workspace, add []string) error {
+	if err := p.ready(); err != nil {
+		return err
+	}
+	cur, err := p.git.SparseList(ctx, w.Path)
+	if err != nil {
+		return fmt.Errorf("cow_clone expand scope: %w", err)
+	}
+	curSet, err := SparseSet(cur)
+	if err != nil {
+		return fmt.Errorf("cow_clone expand scope: %w", err)
+	}
+	newSet, err := SparseSet(append(slices.Clone(cur), add...))
+	if err != nil {
+		return fmt.Errorf("cow_clone expand scope: %w", err)
+	}
+	head, err := p.git.Head(ctx, w.Path)
+	if err != nil {
+		return fmt.Errorf("cow_clone expand scope: %w", err)
+	}
+	if head == w.BaseSHA {
+		if err := p.cloneNewScope(ctx, w, curSet, newSet); err != nil {
+			return err
+		}
+	}
+	if err := p.git.SparseSet(ctx, w.Path, newSet); err != nil {
+		return fmt.Errorf("cow_clone expand scope: sparse set: %w", err)
+	}
+	return nil
+}
+
+// cloneNewScope clones from the golden tree of w the files that newSet
+// matches and curSet does not. The golden reference is held for the call.
+func (p *CowCloneProvider) cloneNewScope(ctx context.Context, w Workspace, curSet, newSet []string) error {
+	repo, err := p.repoDirOf(ctx, w.Path)
+	if err != nil {
+		return err
+	}
+	g, release, err := p.golden.Acquire(ctx, w.ProjectID, repo, w.BaseSHA)
+	if err != nil {
+		return fmt.Errorf("cow_clone expand scope: %w", err)
+	}
+	defer release()
+	oldM, newM := newConeMatcher(curSet), newConeMatcher(newSet)
+	_, err = p.cloneTree(ctx, g.Dir, w.Path, func(rel string, isDir bool) bool {
+		return newM.Match(rel, isDir) && (isDir || !oldM.Match(rel, isDir))
+	})
+	if err != nil {
+		return fmt.Errorf("cow_clone expand scope: clone from golden tree %s: %w", g.BaseSHA, err)
+	}
+	return nil
+}
+
+// repoDirOf returns the main repository of worktree wt, derived from the
+// shared git config the worktree reads: <repo>/.git/config. The golden cache
+// needs it only to rebuild a golden tree that was collected meanwhile.
+func (p *CowCloneProvider) repoDirOf(ctx context.Context, wt string) (string, error) {
+	cfg, err := p.git.GitPath(ctx, wt, "config")
+	if err != nil {
+		return "", fmt.Errorf("cow_clone expand scope: locate repository: %w", err)
+	}
+	common := filepath.Dir(cfg)
+	if filepath.Base(common) == ".git" {
+		return filepath.Dir(common), nil
+	}
+	return common, nil
 }

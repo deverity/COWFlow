@@ -259,13 +259,44 @@ func (m *Manager) List(ctx context.Context, f ListFilter) ([]Workspace, error) {
 	return out, nil
 }
 
-// ExpandScope adds directories to a workspace's sparse scope. It is wired
-// with MCP in Sprint 3 and reports errors.ErrUnsupported until then.
-func (m *Manager) ExpandScope(ctx context.Context, id string, _ []string) error {
+// ExpandScope adds directories to a workspace's sparse scope (SCOPE.md
+// §6.6). The paths are validated first and nothing is touched when one is
+// refused. A workspace that is not sparse already has every file, so the
+// call is a no-op. The provider then materializes the new scope: cow_clone
+// clones the new files from the golden tree while HEAD is still the base
+// commit, otherwise git writes them. The MCP tool and the intent update that
+// call this land in later sprints.
+//
+// PENDING: the workspace row's sparse_paths is not updated, because the
+// store has no operation for it (AG-STORE); the scope in force is read back
+// from git, so the next call stays correct.
+func (m *Manager) ExpandScope(ctx context.Context, id string, add []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return fmt.Errorf("expand scope of workspace %s: %w", id, errors.ErrUnsupported)
+	_, err := SparseSet(add)
+	if err != nil {
+		return fmt.Errorf("expand scope of workspace %s: %w", id, err)
+	}
+	r, err := m.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if r.State != domain.WorkspaceReady {
+		return fmt.Errorf("expand scope of workspace %s: state is %s, not ready", id, r.State)
+	}
+	if len(r.SparsePaths) == 0 || len(add) == 0 {
+		return nil
+	}
+	p := m.providerByName(r.Provider)
+	ex, ok := p.(scopeExpander)
+	if !ok {
+		return fmt.Errorf("expand scope of workspace %s: provider %q: %w", id, r.Provider, ErrUnsupportedProvider)
+	}
+	if err := ex.expandScope(ctx, recordToWorkspace(r), add); err != nil {
+		return fmt.Errorf("expand scope of workspace %s: %w", id, err)
+	}
+	return nil
 }
 
 // get reads the row of workspace id, mapping a missing row to ErrNotFound.

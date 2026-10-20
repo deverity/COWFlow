@@ -266,6 +266,15 @@ func (g *FakeGit) SparseSet(ctx context.Context, worktree string, dirs []string)
 	return nil
 }
 
+// SparseList records the call and returns nothing.
+func (g *FakeGit) SparseList(ctx context.Context, worktree string) ([]string, error) {
+	if err := g.enter(ctx, "SparseList", worktree); err != nil {
+		return nil, err
+	}
+	g.mu.Unlock()
+	return nil, nil
+}
+
 // SparseDisable records the call.
 func (g *FakeGit) SparseDisable(ctx context.Context, worktree string) error {
 	if err := g.enter(ctx, "SparseDisable", worktree); err != nil {

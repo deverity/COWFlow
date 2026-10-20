@@ -64,8 +64,9 @@ func (p *WorktreeProvider) Capabilities(ctx context.Context, root string) (Capab
 
 // Create adds a worktree at spec.Path on the new branch spec.Branch at
 // spec.BaseSHA and sets the per-worktree config (SCOPE.md §7). With
-// spec.Sparse.Enabled the checkout is skipped; the sparse set is applied by
-// the sparse step (S1-T12).
+// spec.Sparse.Enabled the checkout is skipped, then the cone set of
+// spec.Sparse.Paths (plus [AlwaysSet]) is applied and the index and files
+// are populated under it (SCOPE.md §6.6), so only that scope is on disk.
 //
 // spec.Path must not exist; an existing path is [ErrPathExists] and is never
 // touched. An existing branch is [ErrBranchExists]. Any other failure removes
@@ -99,6 +100,11 @@ func (p *WorktreeProvider) Create(ctx context.Context, spec WorkspaceSpec) (_ *W
 	if err = p.configure(ctx, spec.Path); err != nil {
 		return nil, err
 	}
+	if spec.Sparse.Enabled {
+		if err = applySparse(ctx, p.git, spec.Path, spec.Sparse.Paths, true); err != nil {
+			return nil, fmt.Errorf("git_worktree create: %w", err)
+		}
+	}
 	return &Workspace{
 		ID: spec.ID, ProjectID: spec.ProjectID, TaskID: spec.TaskID, SessionID: spec.SessionID,
 		Provider: WorktreeName, Path: spec.Path, Branch: spec.Branch, BaseSHA: spec.BaseSHA,
@@ -106,6 +112,19 @@ func (p *WorktreeProvider) Create(ctx context.Context, spec WorkspaceSpec) (_ *W
 		Sparse: SparseSpec{Enabled: spec.Sparse.Enabled, Paths: append([]string(nil), spec.Sparse.Paths...)},
 		Ports:  spec.Ports,
 	}, nil
+}
+
+// expandScope widens the sparse scope of w by add. Git writes the files that
+// newly match, from the object store.
+func (p *WorktreeProvider) expandScope(ctx context.Context, w Workspace, add []string) error {
+	cur, err := p.git.SparseList(ctx, w.Path)
+	if err != nil {
+		return fmt.Errorf("git_worktree expand scope: %w", err)
+	}
+	if err := applySparse(ctx, p.git, w.Path, append(cur, add...), false); err != nil {
+		return fmt.Errorf("git_worktree expand scope: %w", err)
+	}
+	return nil
 }
 
 // WithInspector sets the shared [Inspector] Inspect delegates to and returns

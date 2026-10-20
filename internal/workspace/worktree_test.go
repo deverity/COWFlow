@@ -113,12 +113,18 @@ func TestWorktreeAutocrlfFalse(t *testing.T) {
 func TestWorktreeSparseSkipsCheckout(t *testing.T) {
 	t.Parallel()
 	f := newWtFixture(t, "ntfs")
+	// Sparse set needs per-call runner options, which the fault wrapper hides.
+	client := git.NewClient(f.repo.Runner)
+	f.prov = workspace.NewWorktreeProvider(client, f.vols)
 	spec := f.spec("sp", "feature/sp")
 	spec.Sparse = workspace.SparseSpec{Enabled: true, Paths: []string{"src"}}
 	w, err := f.prov.Create(context.Background(), spec)
 	require.NoError(t, err)
 	assert.True(t, w.Sparse.Enabled)
-	assert.NoFileExists(t, filepath.Join(w.Path, "a.txt"))
+	assert.FileExists(t, filepath.Join(w.Path, "a.txt"), "root files are part of every cone")
+	dirs, err := client.SparseList(context.Background(), w.Path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"contracts", "src"}, dirs)
 }
 
 func TestWorktreeCreateFailureCompensates(t *testing.T) {
