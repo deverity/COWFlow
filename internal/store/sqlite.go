@@ -23,6 +23,9 @@ type Options struct {
 	BusyTimeout time.Duration // Guidance default 5s
 	Clock       domain.Clock
 	IDs         domain.IDGen
+	// Events receives the events written with a state change. The default
+	// logs at info level; S2-E2 wires the real outbox (PENDING U-DATA-1).
+	Events EventSink
 }
 
 // Store is the handle to the SQLite database.
@@ -30,6 +33,7 @@ type Store struct {
 	db    *sql.DB
 	clock domain.Clock
 	ids   domain.IDGen
+	sink  EventSink
 }
 
 // dsn builds the driver DSN. Pragmas go in the DSN so that every pooled
@@ -70,7 +74,10 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if opt.IDs == nil {
 		opt.IDs = domain.NewULIDGen(opt.Clock)
 	}
-	s := &Store{db: db, clock: opt.Clock, ids: opt.IDs}
+	if opt.Events == nil {
+		opt.Events = logSink{}
+	}
+	s := &Store{db: db, clock: opt.Clock, ids: opt.IDs, sink: opt.Events}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close() // the migration error is the one that matters
 		return nil, err

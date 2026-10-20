@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Store: tasks (minimal), workspaces, golden trees and `audit_log` tables
+  (migration 0002). Workspace inserts allocate the lowest free port slot and
+  are idempotent by `op_id`; state changes follow the settled workspace state
+  machine and write their audit row in the same transaction; golden tree claims
+  elect a single builder across processes, with stale takeover and in-use
+  protected deletion. `domain` gains the workspace, golden tree and task types
+  and the branch namer (`feature/<slug>` under the gitflow preset,
+  `cowflow/<project>/<slug>` otherwise) with slug validation.
 - `git.Client`: worktree add/remove/prune/list, commit and branch lookup,
   compare-and-delete of a branch, golden-tree export into a separate index,
   index refresh, `read-tree`, per-worktree config, `status --porcelain=v2 -z`
