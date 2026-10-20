@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `test/integration`: end-to-end tests of acceptance criteria 1, 2, 12 and 13
+  through the in-process CLI entry point (`task create`, `workspace
+  inspect|destroy|list`) on the generated `small` repository, as
+  `provider=git_worktree` and, on a copy-on-write volume
+  (`COWFLOW_TEST_COW_DIR` or `COWFLOW_TEST_REFS_DIR`), `provider=cow_clone`;
+  on Windows `COWFLOW_TEST_NTFS_DIR` adds the NTFS `ntfs`/`none` check. Fault
+  tests cover disk full during a clone, a `git worktree add` timeout, a
+  truncated `git status`/`rev-list` on destroy, a detached Dev Drive
+  (`pending_mount`) and a stuck handle (`pending_cleanup`), and assert that no
+  partial row, directory, worktree entry or branch is left behind.
+- `test/harness`: `HermeticGit` (the hermetic Git environment and runner of
+  `NewRepo`, for repositories made by other means), `ScratchDir` (tmpfs on
+  Linux, else a temp directory), `FaultyRunner.Clear` and `FaultyOptsRunner`
+  (a `FaultyRunner` with per-call options), so faults also reach the index,
+  export, snapshot and sparse plumbing.
 - `internal/git`: snapshot plumbing for the workspace rescue (`AddAll`,
   `WriteTree`, `CommitTree`, `UpdateRef`), so `destroy --force` on a dirty
   workspace can save its changes. The commit identity is set per call and
