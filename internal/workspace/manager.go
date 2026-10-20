@@ -10,6 +10,7 @@ import (
 
 	"github.com/deverity/cowflow/internal/config"
 	"github.com/deverity/cowflow/internal/domain"
+	"github.com/deverity/cowflow/internal/git"
 	"github.com/deverity/cowflow/internal/platform"
 	"github.com/deverity/cowflow/internal/store"
 )
@@ -274,9 +275,10 @@ func (m *Manager) List(ctx context.Context, f ListFilter) ([]Workspace, error) {
 // commit, otherwise git writes them. The MCP tool and the intent update that
 // call this land in later sprints.
 //
-// PENDING: the workspace row's sparse_paths is not updated, because the
-// store has no operation for it (AG-STORE); the scope in force is read back
-// from git, so the next call stays correct.
+// Once the provider has widened the scope, the workspace row's sparse_paths
+// is replaced with the old paths plus the normalized new ones. If that write
+// fails the files are already materialized; the scope in force is read back
+// from the repository, so a repeated call stays correct.
 func (m *Manager) ExpandScope(ctx context.Context, id string, add []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -302,6 +304,19 @@ func (m *Manager) ExpandScope(ctx context.Context, id string, add []string) erro
 	}
 	if err := ex.expandScope(ctx, recordToWorkspace(r), add); err != nil {
 		return fmt.Errorf("expand scope of workspace %s: %w", id, err)
+	}
+	merged := slices.Clone(r.SparsePaths)
+	for _, a := range add {
+		n, err := git.ValidateSparseDir(a) // validated above; the normalized form is stored
+		if err != nil {
+			return fmt.Errorf("expand scope of workspace %s: %w", id, err)
+		}
+		if !slices.Contains(merged, n) {
+			merged = append(merged, n)
+		}
+	}
+	if err := m.store.UpdateWorkspaceSparsePaths(ctx, id, merged); err != nil {
+		return fmt.Errorf("expand scope of workspace %s: record the new scope: %w", id, err)
 	}
 	return nil
 }

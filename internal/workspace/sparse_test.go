@@ -379,6 +379,10 @@ func TestExpandScopeAddsFiles(t *testing.T) {
 
 			// A second expansion keeps the first.
 			require.NoError(t, f.m.ExpandScope(context.Background(), w.ID, []string{"tools/gen"}))
+			row, err := f.store.GetWorkspace(context.Background(), w.ID)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"cmd/app", "docs/deep", "internal/x", "tools/gen"}, row.SparsePaths,
+				"the row records the old paths plus the normalized new ones")
 			assert.FileExists(t, filepath.Join(w.Path, "tools", "gen", "tmpl", "t.tmpl"))
 			assert.FileExists(t, filepath.Join(w.Path, "docs", "deep", "a", "b", "c.txt"))
 			assert.Empty(t, f.status(t, w.Path))
