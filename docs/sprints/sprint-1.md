@@ -72,18 +72,18 @@ IDs are the stable ones from [SPEC-GAPS.md](../SPEC-GAPS.md). **Nothing below is
 | Ref | Gap | Blocks | How to keep working (not a decision) |
 |---|---|---|---|
 | ~~`C1`~~ | Resolved: Go 1.26+ (SCOPE.md §23 decision 1) | nothing | use the `go.mod` version |
-| `C2` | Task branch name: `cowflow/<project>/<task-slug>` vs `<kind>/<slug>` | S1-T02 (`domain.BranchNamer`), S1-T16 | all code receives a branch from `BranchNamer`; tests use a fake namer |
+| ~~`C2`~~ | Resolved: Task branch follows `[conventions].preset` (SCOPE.md §23 decision 38) | nothing | decided; see SCOPE.md |
 | `C7` | Golden location: `<root>/golden/<sha>` vs `workspace.golden_root` | S1-T09 (`goldenDir`) | one function `goldenDir(cfg, sha)`; tests inject a temp root |
 | `C13` | `gradle_home` and `pip_cache` missing from the `[cache]` example | S1-T15 (two of six keys) | implement the four keys in §22 `[cache]`; the other two wait until `AG-CLI` can add the config keys |
 | `C14` | Defender exclusion: "suggest" vs "required" | nothing (it affects benchmark conditions) | never change Defender; S1-T21 records the exclusion state in its result JSON |
-| `U-PLAT-1` | How a `cow_clone` tree gets its own `HEAD` and index | S1-T10 step 5 | `IndexSeeder` interface with options A and B (S1-T10); if undecided by day 3, implement both and let S1-T21 measure them |
-| `U-PLAT-2` | Rescue-before-destroy format and location | S1-T14 step 4 (`--force` on a dirty workspace) | `Rescuer` interface. Until a decision, `--force` on a dirty workspace is **refused** (`ErrRescueUndecided`), so no data is ever lost |
-| `U-PLAT-3` | Sparse `always` set beyond "root, configs" | S1-T12 (`AlwaysSet`) | `AlwaysSet()` returns only the spec-named items: root files, `contracts`, `go.mod` |
+| ~~`U-PLAT-1`~~ | Resolved: `worktree add --no-checkout` plus golden index copy (SCOPE.md §23 decision 39) | nothing | decided; see SCOPE.md |
+| ~~`U-PLAT-2`~~ | Resolved: snapshot commit at `refs/cowflow/rescue/<workspace_id>` (SCOPE.md §23 decision 40) | nothing | decided; see SCOPE.md |
+| ~~`U-PLAT-3`~~ | Resolved: `always` = `contracts` (SCOPE.md §23 decision 41) | nothing | decided; see SCOPE.md |
 | `U-PLAT-4` | Same-volume requirement between `golden_root` and `workspace.root` | S1-T06, S1-T10 (`Capabilities`) | when the two are on different volumes, `Capabilities` reports `CowNone`, so `auto` applies the existing no-COW rule from §6.3 (worktree + warning). `AG-LEAD` confirms |
 | `U-PLAT-8` | Harness "Git repo on tmpfs" on Windows/macOS | S1-T20 | reuse the `S0-E8` approach (`t.TempDir()` where no tmpfs exists) |
 | `U-DATA-1` | Columns of `events`/`outbox` | S1-T03, S1-T14 (emitting `workspace.pending_mount\|pending_cleanup`) | `EventSink` interface; a recording fake if `S0-E3` has no events table; `S2-E2` wires the real outbox |
 | `U-DATA-2` | Prefixes for prefixed ULIDs | S1-T02 (workspace/task IDs) | use the `S0-E3` generator; if still open, `AG-LEAD` escalates on day 1 |
-| `U-DATA-5` | Workspace states beyond `ready`, `pending_mount`, `pending_cleanup` | S1-T02, S1-T03, S1-T14 | constants in `internal/domain`. Proposed names `creating`, `failed`, `destroyed` go to the maintainer |
+| `U-DATA-5` | Workspace states resolved (SCOPE.md §23 decision 48: `creating\|pending_mount\|ready\|failed\|pending_cleanup\|destroyed`); lease and integration group states stay open (Phases 4 and 5) | nothing in this sprint | constants in `internal/domain` |
 | `U-API-1` | SQLite and `config.toml` location | demo step 7 (editing config) | inherit the `S0` choice |
 | `U-API-11` | Which §22 values are defaults | S1-T03, S1-T15 (`port_range_start`, `port_range_per_workspace`, `golden_cache_gb`) | read whatever `S0-E2` loads; never hardcode |
 | SCOPE.md §23 Open question 6 | Golden tree per `base_sha` vs per branch ("Phase 1 benchmark") | nothing | implement per `base_sha` (§6.4); S1-T21 `TestOQ6_GoldenPerBaseSHA` produces the data |
@@ -93,13 +93,13 @@ IDs are the stable ones from [SPEC-GAPS.md](../SPEC-GAPS.md). **Nothing below is
 | ID | Question | Tasks waiting on it |
 |---|---|---|
 | `U-API-12` | Exit code when `destroy` is refused for unpreserved changes: `2` (state) or `4` (refused by policy)? | S1-T14, S1-T17 |
-| `U-API-14` | How does a task declare `sparse = false` (§6.6) from the CLI? §14 has no flag | S1-T12, S1-T16 |
-| `U-PLAT-11` | Workspace directory name (§5.4 shows `X:/ws/auth`, i.e. the task slug) and where per-workspace logs live (§6.1) | S1-T03 |
-| `U-PLAT-12` | Benchmark definitions: which timing counts for "< 2 s each" (in-process create vs CLI wall time; sequential vs concurrent), and what "setup" means in §20.17 | S1-T21 |
-| `U-PLAT-13` | What "in use" means for golden GC, and the states of `golden_trees` rows | S1-T02, S1-T09 |
-| `U-PLAT-14` | Variable names in `.env.cowflow` for `port_range` and workspace identity | S1-T15 |
-| `U-PLAT-15` | Explicit `provider = "cow_clone"` on a volume without COW: fail, or fall back with a warning? | S1-T03 |
-| `U-PLAT-16` | Do git-ignored files count as "unpreserved changes"? | S1-T13 |
+| ~~`U-API-14`~~ | Resolved: `task create --sparse` (default true) (SCOPE.md §23 decision 49) | S1-T12, S1-T16 |
+| ~~`U-PLAT-11`~~ | Resolved: `<workspace.root>/<slug>`; logs under `<state_dir>/logs/<workspace_id>/` (SCOPE.md §23 decision 42) | S1-T03 |
+| ~~`U-PLAT-12`~~ | Resolved: in-process sequential `Manager.Create`; setup defined (SCOPE.md §23 decision 43) | S1-T21 |
+| ~~`U-PLAT-13`~~ | Resolved: `building\|ready\|failed\|deleting`; in use = `in_use > 0` (SCOPE.md §23 decision 44) | S1-T02, S1-T09 |
+| ~~`U-PLAT-14`~~ | Resolved: format and variable names fixed in §6.1 (SCOPE.md §23 decision 45) | S1-T15 |
+| ~~`U-PLAT-15`~~ | Resolved: explicit `cow_clone` without COW fails, exit 2 (SCOPE.md §23 decision 46) | S1-T03 |
+| ~~`U-PLAT-16`~~ | Resolved: ignored files are not unpreserved changes (SCOPE.md §23 decision 47) | S1-T13 |
 
 ## 4. Concepts you need
 

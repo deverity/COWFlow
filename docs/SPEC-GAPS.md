@@ -18,7 +18,7 @@ their group; resolved items are struck through, never renumbered.
 | # | Topic | Conflict | Sections |
 |---|---|---|---|
 | ~~C1~~ | ~~Go version~~ | Resolved: Go 1.26+ (SCOPE.md §23 settled decision 1). | header, §16, §23 |
-| C2 | Task branch naming | `cowflow/<project>/<task-slug>` vs `<kind>/<slug>` under the gitflow preset. | §8.1, §24.2 |
+| ~~C2~~ | ~~Task branch naming~~ | Resolved: Task branch follows `[conventions].preset` (SCOPE.md §23 decision 38). | §8.1, §24.2 |
 | ~~C3~~ | ~~`promotion_mode` values~~ | Resolved: `manual\|auto` in v1; `pr` is open question 7 (SCOPE.md §23 decision 14). | §10.3, §22, §24.2 |
 | ~~C4~~ | ~~Sync strategy name~~ | Resolved: `squash` everywhere (SCOPE.md §23 decision 15). | §8.4, §14 |
 | ~~C5~~ | ~~Per-target integration limit~~ | Resolved: `max_integrations_per_target` only (SCOPE.md §23 decision 16). | §10.3, §11, §22 |
@@ -39,12 +39,12 @@ their group; resolved items are struck through, never renumbered.
 
 ### Data model and events
 
-- **U-DATA-1** *(Sprint 2, with U-DATA-3)* Columns of `events`, `outbox`, `event_deliveries`; where `op_id` is stored (§13).
+- **U-DATA-1** *(Sprint 2, with U-DATA-3)* Columns of `events`, `outbox`, `event_deliveries`; where `op_id` is stored (§13). Interim (Sprint 1): `workspace.pending_mount` and `workspace.pending_cleanup` go through the `EventSink` seam; the default sink logs at info.
   Recommended shape: `events(seq INTEGER PK AUTOINCREMENT, id TEXT UNIQUE evt_ULID, project_id, type, subject_kind, subject_id, task_id, session_id, payload JSON, op_id, created_at)` with `seq` as the public cursor; `outbox(event_seq PK -> events.seq, state pending|delivered|failed, attempts, next_attempt_at, last_error)`; `event_deliveries(event_seq, consumer, delivered_at, acked_at, PK(event_seq, consumer))`; `operations(op_id TEXT PK, project_id, kind, result JSON, created_at)` written in the same transaction by `WithTx`.
 - ~~**U-DATA-2** Prefixes for "prefixed ULIDs" (§13).~~ Resolved: `<prefix>_<ULID>` with a fixed prefix table (SCOPE.md §23 decision 37).
 - **U-DATA-3** Whether the event cursor is the ULID; ULIDs from concurrent daemonless writers are not commit-ordered, so a ULID cursor can skip events (§9.9).
 - **U-DATA-4** Concrete `cross_request.*` event names; `scope.exceeded` missing from the event list (§9.9, §24.9).
-- **U-DATA-5** States of integration groups, workspaces (beyond `ready`, `pending_mount`, `pending_cleanup`), and `resource_leases.state` (§6, §9.8, §10).
+- **U-DATA-5** *(open for leases and integration groups)* Workspace states are resolved (SCOPE.md §23 decision 48). Still open: `resource_leases.state` (Phase 4; proposed `queued|active|released|expired|revoked`) and integration group states (Phase 5; proposed `created|validating|validated|failed|stale|promoted|reverted|cancelled`) (§9.8, §10).
 - **U-DATA-6** Where contract `Status` lives (file header vs table) and who moves it to `implemented` (§9.5, §24.8).
 - **U-DATA-7** States of intents (only `active` is named) and of `sync_attempts` (only `conflict` is named); concrete `sync.*` event names (§9.2, §9.9, §18, §24.9).
 - **U-DATA-8** How a cross-request identifies *which* contract it targets (e.g. `confirm_contract`) (§9.3, §9.5, §24.8).
@@ -55,7 +55,7 @@ their group; resolved items are struck through, never renumbered.
 - **U-GIT-1** Diff base of the change manifest (`base_sha`, previous change, or parent) (§8.2).
 - **U-GIT-2** How `Cowflow-Task`/`Cowflow-Change` trailers are added to an immutable published commit; value and casing of `x-cowflow-source` (§8, §24.3).
 - **U-GIT-3** Whether a non-descendant `HEAD` is refused or becomes a new change (§8.1).
-- **U-GIT-4** Retention cleanup for promoted/superseded refs (`change_retention_days`) (§8, §22).
+- **U-GIT-4** Retention cleanup for promoted/superseded refs (`change_retention_days`) (§8, §22). Note: whatever retention GC Sprint 2 adds must leave `refs/cowflow/rescue/*` alone (SCOPE.md §23 decision 40).
 - **U-GIT-5** How changes are applied in the integration candidate; whether `promoted_sha == candidate_sha` (§10.1).
 - **U-GIT-6** `pattern` invariants in diff-only gates: whole blob vs added lines (§9.6, §10).
 - **U-GIT-7** Behavior when `rerun_on_stale = false` (§10.3).
@@ -72,9 +72,9 @@ their group; resolved items are struck through, never renumbered.
 
 ### Workspaces and platform
 
-- **U-PLAT-1** How a `cow_clone` tree gets its own HEAD and index (§6.1).
-- **U-PLAT-2** Rescue-before-destroy format and storage location (§17).
-- **U-PLAT-3** Sparse `always` set beyond "root, configs" (§6.6).
+- ~~**U-PLAT-1** How a `cow_clone` tree gets its own HEAD and index (§6.1).~~ Resolved: `worktree add --no-checkout` plus golden index copy (SCOPE.md §23 decision 39).
+- ~~**U-PLAT-2** Rescue-before-destroy format and storage location (§17).~~ Resolved: snapshot commit at `refs/cowflow/rescue/<workspace_id>` (SCOPE.md §23 decision 40).
+- ~~**U-PLAT-3** Sparse `always` set beyond "root, configs" (§6.6).~~ Resolved: `always` = `contracts` (SCOPE.md §23 decision 41).
 - ~~**U-PLAT-4** Same-volume requirement between `golden_root` and `workspace.root` for block clone (§6.4).~~ Resolved: same volume required, else fall back to `git_worktree` (SCOPE.md §23 decision 31).
 - ~~**U-PLAT-5** Auto-attach of the VHDX at boot: scheduled task vs service (§6.4).~~ Resolved: Task Scheduler task at logon (SCOPE.md §23 decision 32).
 - **U-PLAT-6** *(Phase 4, S4-E9)* `CTRL_BREAK` cancellation when running as a Windows service (no console) (§7). Interim rule (SCOPE.md §23 decision 33): when `GenerateConsoleCtrlEvent(CTRL_BREAK)` fails (no console), skip the grace wait and go straight to `TerminateJobObject`; log at debug.
@@ -82,12 +82,12 @@ their group; resolved items are struck through, never renumbered.
 - ~~**U-PLAT-8** Hermetic harness "Git repo on tmpfs" on Windows/macOS (§18.1).~~ Resolved: tmpfs on Linux only (SCOPE.md §23 decision 34).
 - **U-PLAT-9** Form of the mount point under `C:\cf\` (§6.4, §23 open question 8). Flags and defaults of `devdrive` and `init --devdrive` are resolved (SCOPE.md §23 decision 35); v1 mounts on a drive letter only.
 - ~~**U-PLAT-10** Where the Dev Drive is "registered in the project state": `[devdrive]` in `config.toml`, SQLite, or both (§6.4).~~ Resolved: `[devdrive]` in `config.toml` only (SCOPE.md §23 decision 36).
-- **U-PLAT-11** Workspace directory name under `workspace.root` and location of per-workspace logs (§5.4, §6.1).
-- **U-PLAT-12** Benchmark definitions: which timing counts for "< 2 s each" (in-process vs CLI, sequential vs concurrent); what "setup" means for the shared-cache gain (§19, §20).
-- **U-PLAT-13** What "in use" means for golden GC; states of `golden_trees` rows (§6.4, §11, §13).
-- **U-PLAT-14** Variable names in `.env.cowflow` for `port_range` and workspace identity (§6.1).
-- **U-PLAT-15** Explicit `provider = "cow_clone"` on a volume without COW: fail, or fall back with a warning (§6.2, §6.3).
-- **U-PLAT-16** Whether git-ignored files count as "unpreserved changes" for destroy (§17, §20).
+- ~~**U-PLAT-11** Workspace directory name under `workspace.root` and location of per-workspace logs (§5.4, §6.1).~~ Resolved: `<workspace.root>/<slug>`; logs under `<state_dir>/logs/<workspace_id>/` (SCOPE.md §23 decision 42).
+- ~~**U-PLAT-12** Benchmark definitions: which timing counts for "< 2 s each" (in-process vs CLI, sequential vs concurrent); what "setup" means for the shared-cache gain (§19, §20).~~ Resolved: in-process sequential `Manager.Create`; setup defined (SCOPE.md §23 decision 43).
+- ~~**U-PLAT-13** What "in use" means for golden GC; states of `golden_trees` rows (§6.4, §11, §13).~~ Resolved: `building|ready|failed|deleting`; in use = `in_use > 0` (SCOPE.md §23 decision 44).
+- ~~**U-PLAT-14** Variable names in `.env.cowflow` for `port_range` and workspace identity (§6.1).~~ Resolved: format and variable names fixed in §6.1 (SCOPE.md §23 decision 45).
+- ~~**U-PLAT-15** Explicit `provider = "cow_clone"` on a volume without COW: fail, or fall back with a warning (§6.2, §6.3).~~ Resolved: explicit `cow_clone` without COW fails, exit 2 (SCOPE.md §23 decision 46).
+- ~~**U-PLAT-16** Whether git-ignored files count as "unpreserved changes" for destroy (§17, §20).~~ Resolved: ignored files are not unpreserved changes (SCOPE.md §23 decision 47).
 - **U-PLAT-17** Windows service account (LocalSystem vs user) given per-user tokens, repos and VHDX attach (§6.4, §17, §19).
 - **U-PLAT-18** ProjFS callback timeout value; no config key exists (§6.5, §18).
 - **U-PLAT-19** Whether projected ProjFS content applies `.gitattributes` filters (eol, LFS) (§6.5).
@@ -109,7 +109,7 @@ their group; resolved items are struck through, never renumbered.
 - ~~**U-API-11** Which §22 values are defaults vs examples.~~ Resolved: §22 is the defaults file with listed exceptions (SCOPE.md §23 decision 28).
 - ~~**U-API-12** Exit codes for cases §14 does not classify: `doctor` with failing checks, a not-yet-implemented command, an unclassified internal error, UAC elevation declined, `workspace destroy` refused for unpreserved work (`2` or `4`) (§14).~~ Resolved: exit-code rule in §14 (SCOPE.md §23 decision 29).
 - ~~**U-API-13** The bootstrap `version` subcommand is not in §14: keep it, or only `--version` (§14).~~ Resolved: `--version` only (SCOPE.md §23 decision 30).
-- **U-API-14** No CLI flag for a task's `sparse = false` (§6.6, §14).
+- ~~**U-API-14** No CLI flag for a task's `sparse = false` (§6.6, §14).~~ Resolved: `task create --sparse` (default true) (SCOPE.md §23 decision 49).
 - **U-API-15** No CLI verb to create/update an intent or report presence; only MCP and API (§9.1, §9.2, §14).
 - **U-API-16** CLI caller identity in daemonless mode: origin of `request send`, actor of `accept`/`deliver`, session of a publish (§5.4, §24.14).
 - **U-API-17** §14 `request` flags omit `eta_minutes` on accept, a reject reason, and request priority (§14, §24.11).
