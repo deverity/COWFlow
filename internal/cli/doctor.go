@@ -116,8 +116,7 @@ func runDoctor(ctx context.Context, deps Deps) DoctorReport {
 		checkLongPaths,
 		checkAutoCRLF,
 		checkGitattributes,
-		// PENDING C14: the defender.exclusion check is not added until the
-		// "suggest vs required" decision is made.
+		checkDefenderExclusion,
 	} {
 		checks = append(checks, withTimeout(ctx, env, c)...)
 	}

@@ -45,6 +45,8 @@ func newDeps() cli.Deps {
 
 		NewAutoAttacher: platform.NewAutoAttacherFor,
 		CurrentUser:     currentUser,
+		// DefenderExclusions stays nil until internal/platform provides the
+		// Get-MpPreference probe; doctor skips defender.exclusion meanwhile.
 	}
 }
 

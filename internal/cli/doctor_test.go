@@ -31,6 +31,8 @@ type doctorEnvT struct {
 	runner *harness.FaultyRunner
 	cfg    string // config.toml content; "" means no file
 	vhdx   string
+
+	defender func(context.Context) ([]string, error) // Deps.DefenderExclusions
 }
 
 func newDoctorEnv(t *testing.T, opts ...harness.RepoOption) *doctorEnvT {
@@ -106,6 +108,8 @@ func (e *doctorEnvT) run(args ...string) doctorRun {
 		Host:       e.host,
 		DevDrive:   e.dd,
 		Git:        e.runner,
+
+		DefenderExclusions: e.defender,
 	}
 	var out, errb bytes.Buffer
 	ios := IOStreams{In: strings.NewReader(""), Out: &out, Err: &errb}
@@ -341,9 +345,50 @@ func TestDoctor_ProjFSOnlyWhenConfigured(t *testing.T) {
 	})
 }
 
-func TestDoctor_NoDefenderCheckUntilC14(t *testing.T) {
-	e := newDoctorEnv(t)
-	assert.False(t, e.run().has("defender.exclusion"))
+func TestDoctor_DefenderExclusion(t *testing.T) {
+	excluded := func(paths ...string) func(context.Context) ([]string, error) {
+		return func(context.Context) ([]string, error) { return paths, nil }
+	}
+	tests := []struct {
+		name     string
+		elevated bool
+		devDrive bool
+		goos     string
+		probe    func(context.Context) ([]string, error)
+		want     CheckStatus
+		wantFix  string
+	}{
+		{name: "excluded", elevated: true, devDrive: true, probe: excluded(`C:\src`, `x:\`), want: StatusOK},
+		{name: "excluded without slash", elevated: true, devDrive: true, probe: excluded("X:"), want: StatusOK},
+		{name: "not excluded", elevated: true, devDrive: true, probe: excluded(`C:\src`, `X:\ws`), want: StatusWarn,
+			wantFix: `Add-MpPreference -ExclusionPath 'X:\'`},
+		{name: "not elevated", devDrive: true, probe: excluded(`X:\`), want: StatusSkip},
+		{name: "defender inactive", elevated: true, devDrive: true, want: StatusSkip,
+			probe: func(context.Context) ([]string, error) { return nil, errors.New("Defender is not active") }},
+		{name: "no probe", elevated: true, devDrive: true, want: StatusSkip},
+		{name: "no dev drive", elevated: true, probe: excluded(`X:\`), want: StatusSkip},
+		{name: "not windows", elevated: true, devDrive: true, goos: "linux", probe: excluded(`X:\`), want: StatusSkip},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newDoctorEnv(t)
+			e.host.OSInfo.Elevated = tt.elevated
+			if tt.goos != "" {
+				e.host.OSInfo = platform.OSInfo{GOOS: tt.goos, Elevated: tt.elevated}
+			}
+			if tt.devDrive {
+				e.provision()
+				e.devDriveConfig("")
+			}
+			e.defender = tt.probe
+
+			r := e.run()
+			c := r.check(t, "defender.exclusion")
+			assert.Equal(t, tt.want, c.Status, c.Detail)
+			assert.Equal(t, tt.wantFix, c.Fix)
+			assert.NotEqual(t, StatusFail, c.Status, "never fail (C14)")
+		})
+	}
 }
 
 func TestDoctor_ConfigMissingUsesDefaults(t *testing.T) {

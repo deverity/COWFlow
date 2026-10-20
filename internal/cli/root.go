@@ -42,6 +42,11 @@ type Deps struct {
 	// other credentials, so the auto-attach task triggers at the right
 	// logon. nil: the child uses its own token's user.
 	CurrentUser func() (string, error)
+	// DefenderExclusions returns the Microsoft Defender exclusion paths
+	// (Get-MpPreference ExclusionPath) for doctor; an error means they
+	// cannot be read (not elevated, Defender not active). nil: the probe is
+	// unavailable and the check is skipped.
+	DefenderExclusions func(ctx context.Context) ([]string, error)
 }
 
 // runState records what the run learned while cobra parsed the command line.

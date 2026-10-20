@@ -52,7 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without COW, ProjFS when configured, `core.longpaths`, `core.autocrlf`,
   `.gitattributes`) plus `git >= 2.40`, with a fix command per finding. Prints
   a table or, with `--json`, `{"checks": [...], "ok": bool}`; exits non-zero
-  only when a check fails. The Defender exclusion check waits for SPEC-GAPS C14.
+  only when a check fails. `defender.exclusion` reports `ok` when the Dev
+  Drive is excluded from Defender scans, `warn` with the `Add-MpPreference`
+  command when it is not, and `skip` when the exclusions cannot be read (not
+  elevated, Defender not active); it never fails.
 - Git version gate (`git >= 2.40`, typed `ErrVersionTooOld`) and a `ConfigGet`
   probe that distinguishes an unset key from a git failure (`internal/git`).
 - Platform doctor probes: Dev Drive detection in `Host.Volume` and ProjFS

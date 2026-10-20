@@ -247,3 +247,34 @@ func checkGitattributes(_ context.Context, e *doctorEnv) []CheckResult {
 	}
 	return single(name, StatusWarn, ".gitattributes lacks the line \"* text=auto eol=lf\"", "")
 }
+
+// checkDefenderExclusion reports whether the Dev Drive is excluded from
+// Defender scans (§7). The exclusion is only suggested (SPEC-GAPS C14), so
+// the check is ok or warn, and skip when the exclusions cannot be read; it
+// never fails.
+func checkDefenderExclusion(ctx context.Context, e *doctorEnv) []CheckResult {
+	const name = "defender.exclusion"
+	dd := e.cfg.DevDrive
+	switch {
+	case e.goos() != "windows":
+		return single(name, StatusSkip, "Defender exclusions are Windows-only", "")
+	case !dd.Enabled || dd.Mount == "":
+		return single(name, StatusSkip, "no Dev Drive configured", "")
+	case e.osErr == nil && !e.osInfo.Elevated:
+		return single(name, StatusSkip, "reading Defender exclusions needs administrator rights", "")
+	case e.deps.DefenderExclusions == nil:
+		return single(name, StatusSkip, "Defender exclusions cannot be read on this system", "")
+	}
+	paths, err := e.deps.DefenderExclusions(ctx)
+	if err != nil {
+		return single(name, StatusSkip, "cannot read Defender exclusions: "+err.Error(), "")
+	}
+	root := dd.Mount + `\`
+	for _, p := range paths {
+		if strings.EqualFold(strings.TrimRight(strings.TrimSpace(p), `\/`), dd.Mount) {
+			return single(name, StatusOK, root+" is excluded from Defender scans", "")
+		}
+	}
+	return single(name, StatusWarn, root+" is not excluded from Defender scans (suggested)",
+		defenderExclusionCmd(dd.Mount))
+}
