@@ -111,17 +111,17 @@ func canonicalVHDX(p string) (string, error) {
 	return c, nil
 }
 
-// checkMountForm accepts a drive letter D: to Z:.
+// checkMountForm accepts a drive letter D: to Z:. v1 mounts the Dev Drive
+// on a drive letter only (SCOPE.md §6.4 step 4); the mount-point form under
+// C:\cf\ is SCOPE.md §23 open question 8. The format and mount scripts
+// already handle a directory access path, so answering it is a validation
+// change only.
 func checkMountForm(mount string) error {
 	if letterMount.MatchString(mount) {
 		return nil
 	}
-	// PENDING U-PLAT-9: SCOPE.md §6.4 step 4 also allows "a mount point
-	// under C:\cf\", whose form is undecided. Until it is, only drive
-	// letters are accepted; the format and mount scripts already handle a
-	// directory access path, so enabling it is a validation change only.
-	return fmt.Errorf("%w: mount %q must be a drive letter D: to Z: "+
-		"(mount points under C:\\cf\\ are pending SPEC-GAPS U-PLAT-9)", errInvalidSpec, mount)
+	return fmt.Errorf("%w: mount %q must be a drive letter D: to Z: (v1 mounts on a drive "+
+		"letter only; mount points under C:\\cf\\ are SCOPE.md §23 open question 8)", errInvalidSpec, mount)
 }
 
 // checkLetterFree fails when the drive letter of mount is in use.
@@ -366,7 +366,7 @@ func (d *devDrive) status(ctx context.Context, b diskBackend, spec DevDriveSpec)
 	}
 	st.Attached = true
 	if checkMountForm(spec.Mount) != nil {
-		return st, nil // PENDING U-PLAT-9: directory mounts are not resolved yet
+		return st, nil // not a drive letter: v1 mounts nothing there (§23 open question 8)
 	}
 	vn, mounted, err := d.ops.volumeDisk(ctx, spec.Mount)
 	if err != nil {

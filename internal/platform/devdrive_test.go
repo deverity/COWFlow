@@ -178,7 +178,7 @@ func TestProvision_Validation(t *testing.T) {
 		{"lower-case letter", func(_ *testing.T, _ *ddHost, _ *ddFake, s *DevDriveSpec) { s.Mount = "x:" }, errInvalidSpec},
 		{"letter C", func(_ *testing.T, _ *ddHost, _ *ddFake, s *DevDriveSpec) { s.Mount = "C:" }, errInvalidSpec},
 		{"letter with slash", func(_ *testing.T, _ *ddHost, _ *ddFake, s *DevDriveSpec) { s.Mount = `X:\` }, errInvalidSpec},
-		{"directory mount pending U-PLAT-9", func(_ *testing.T, _ *ddHost, _ *ddFake, s *DevDriveSpec) { s.Mount = `C:\cf\mnt` }, errInvalidSpec},
+		{"directory mount is open question 8", func(_ *testing.T, _ *ddHost, _ *ddFake, s *DevDriveSpec) { s.Mount = `C:\cf\mnt` }, errInvalidSpec},
 		{"injection in mount", func(_ *testing.T, _ *ddHost, _ *ddFake, s *DevDriveSpec) {
 			s.Mount = `X:'; Remove-Item C:\ -Recurse #`
 		}, errInvalidSpec},
@@ -453,4 +453,14 @@ func TestStatus(t *testing.T) {
 
 	_, err = d.Status(context.Background(), DevDriveSpec{VHDXPath: "relative.vhdx", Mount: "X:"})
 	require.ErrorIs(t, err, errInvalidSpec)
+}
+
+// TestCheckMountForm_NamesOpenQuestion: v1 mounts on a drive letter only,
+// and the rejection of any other form points at SCOPE.md §23 open question 8.
+func TestCheckMountForm_NamesOpenQuestion(t *testing.T) {
+	require.NoError(t, checkMountForm("X:"))
+	err := checkMountForm(`C:\cf\mnt`)
+	require.ErrorIs(t, err, errInvalidSpec)
+	require.ErrorContains(t, err, "§23 open question 8")
+	require.NotContains(t, err.Error(), "PENDING")
 }

@@ -40,10 +40,13 @@ type Host interface {
 type DevDriveSpec struct {
 	VHDXPath  string // canonical absolute path, e.g. C:\cf\cowflow.vhdx
 	SizeBytes uint64 // >= 50 GiB (Dev Drive minimum)
-	Mount     string // "X:" or a directory under C:\cf\ (U-PLAT-9)
+	Mount     string // drive letter "D:" to "Z:"; no mount-point form in v1 (SCOPE.md §23 open question 8)
 }
 
-// DevDriveStatus reports the state of a Dev Drive.
+// DevDriveStatus reports the observed state of a Dev Drive. The platform
+// layer records nothing: the Dev Drive is registered only in [devdrive] of
+// config.toml (SCOPE.md §6.4 step 5; no SQLite row), and this state is
+// probed live on every call.
 type DevDriveStatus struct {
 	VHDXPath string
 	Exists   bool
