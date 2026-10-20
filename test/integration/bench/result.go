@@ -230,7 +230,7 @@ func (r *Result) Write(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
 	}
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // G703: results directory chosen by the operator
 		return "", fmt.Errorf("bench: create %s: %w", dir, err)
 	}
 	data, err := json.MarshalIndent(r, "", "  ")
@@ -239,7 +239,7 @@ func (r *Result) Write(dir string) (string, error) {
 	}
 	name := fileName(r.Test, r.RepoProfile, r.Seeder, r.GOOS, r.Filesystem) + ".json"
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil { //nolint:gosec // G703: file name is sanitized by fileName
 		return "", fmt.Errorf("bench: write %s: %w", path, err)
 	}
 	return path, nil
