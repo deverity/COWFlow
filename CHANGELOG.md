@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workspacetest` adds test-only fakes: `FakeProvider`, `FakeManager`,
   `FakeCloner` (byte copy with fault injection), `FakeGit`, `MemStore` and
   `FakeVolumes`.
+- `workspace.Manager`: provider selection (`auto` takes `cow_clone` only with
+  block clone, otherwise `git_worktree` with a logged and returned warning;
+  an explicit `cow_clone` without block clone fails with
+  `ErrCloneUnsupported`; `projfs` and `container` are never selected) and
+  safe create: refuses `main`/`develop`, invalid or existing branches and
+  paths, confines `<workspace.root>/<slug>`, checks the Dev Drive mount gate
+  by volume ID before any write (a failure records a `pending_mount` row and
+  event, nothing on disk), and compensates every failure after the insert
+  (worktree and directory removed, the created branch deleted, row `failed`)
+  so no workspace is left partially `ready`. Create is idempotent by `op_id`.
+  New sentinels `ErrRootNotSet`, `ErrPathExists`, `ErrBranchExists`;
+  `workspace.LogsDir` names `<state_dir>/logs/<workspace_id>`.
 - Store: tasks (minimal), workspaces, golden trees and `audit_log` tables
   (migration 0002). Workspace inserts allocate the lowest free port slot and
   are idempotent by `op_id`; state changes follow the settled workspace state

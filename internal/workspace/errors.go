@@ -16,6 +16,13 @@ var (
 	ErrProtectedBranch     = errors.New("workspace: protected branch")        // main/develop (§24.2)
 	ErrCloneUnsupported    = errors.New("workspace: block clone unsupported") // no block clone on this volume
 	ErrUnsupportedProvider = errors.New("workspace: provider not available")  // projfs, container
+
+	// ErrRootNotSet: [workspace].root is empty (exit 2, SCOPE.md §22).
+	ErrRootNotSet = errors.New("workspace: workspace.root is not set (set workspace.root or run cowflow init --devdrive)")
+	// ErrPathExists: <workspace.root>/<slug> exists in some state (exit 3, §6.1).
+	ErrPathExists = errors.New("workspace: workspace path exists: destroy it first")
+	// ErrBranchExists: the task branch exists before its workspace (exit 3, §14).
+	ErrBranchExists = errors.New("workspace: branch exists")
 )
 
 // maxListed is how many paths or commits an UnpreservedError message names

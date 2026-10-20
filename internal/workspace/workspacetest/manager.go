@@ -13,7 +13,7 @@ import (
 
 // FakeManager has the method set of the workspace Manager (sprint-1.md
 // §6.1) and keeps its workspaces in a FakeProvider, so the CLI can be
-// developed and tested before the real Manager lands (S1-T03).
+// tested without a store, git or a real provider.
 //
 // Select("auto") returns Provider with Warning (set Warning to simulate the
 // no-COW fallback); "cow_clone" and "git_worktree" return Provider without a
