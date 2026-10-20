@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and unpublished-commit listing, each a single argv call through the git
   runner. The runner now takes a per-call `GIT_INDEX_FILE` and stdin, and also
   strips an inherited `GIT_COMMON_DIR`.
+- `git.Client` cone-mode sparse checkout: `SparseSet` (directories on stdin,
+  never argv; a path that is a file at `HEAD` is refused by name),
+  `SparseDisable`, `SparseList`, `PopulateSparse` (`read-tree -mu HEAD`), and
+  `git.ValidateSparseDir`, which normalizes `\` to `/` and rejects empty,
+  absolute, drive-letter, `..`, leading-`-`, glob and control-character paths.
 - Volume identity and free space (`platform.VolumeOf`, `SameVolume`,
   `FreeBytes`): lowercase filesystem name, volume ID, mount path, Dev Drive
   state, block-refcounting hint and cluster size. `SameVolume` and
