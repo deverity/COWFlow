@@ -109,3 +109,122 @@ jobs:
             fi
           done
           exit $fail
+
+  # Filesystem-specific jobs: the workspace and clone tests run on real
+  # copy-on-write filesystems. Packages that do not exist yet are skipped, and
+  # the tests themselves skip with a reason when COWFLOW_TEST_COW_DIR (or the
+  # ReFS/NTFS variables) point nowhere usable. Official AC 21 numbers come from
+  # the self-hosted win11-devdrive runner, not from these jobs.
+  cow-linux:
+    name: cow-linux (${{ matrix.fs }})
+    strategy:
+      fail-fast: false
+      matrix:
+        fs: [btrfs, xfs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: create ${{ matrix.fs }} loop filesystem
+        env:
+          FS: ${{ matrix.fs }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y btrfs-progs xfsprogs
+          truncate -s 8G "$RUNNER_TEMP/cow.img"
+          if [ "$FS" = btrfs ]; then
+            mkfs.btrfs -q "$RUNNER_TEMP/cow.img"
+          else
+            mkfs.xfs -q -m reflink=1 "$RUNNER_TEMP/cow.img"
+          fi
+          sudo mkdir -p /mnt/cow
+          sudo mount -o loop "$RUNNER_TEMP/cow.img" /mnt/cow
+          sudo chown "$USER" /mnt/cow
+      - name: build
+        run: CGO_ENABLED=0 go build ./...
+      - name: test on ${{ matrix.fs }}
+        env:
+          COWFLOW_TEST_COW_DIR: /mnt/cow
+          TMPDIR: /mnt/cow
+        run: |
+          pkgs="./test/fixtures/..."
+          for d in internal/workspace test/integration; do
+            if [ -d "$d" ]; then pkgs="$pkgs ./$d/..."; fi
+          done
+          go test -race -count=1 $pkgs
+
+  cow-macos:
+    name: cow-macos
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: build
+        run: CGO_ENABLED=0 go build ./...
+      - name: test on APFS
+        env:
+          # The runner's temporary directory is APFS, which supports clonefile.
+          COWFLOW_TEST_COW_DIR: ${{ runner.temp }}/cow
+        run: |
+          mkdir -p "$COWFLOW_TEST_COW_DIR"
+          pkgs="./test/fixtures/..."
+          for d in internal/workspace test/integration; do
+            if [ -d "$d" ]; then pkgs="$pkgs ./$d/..."; fi
+          done
+          go test -race -count=1 $pkgs
+
+  cow-windows:
+    name: cow-windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: build
+        shell: bash
+        run: CGO_ENABLED=0 go build ./...
+      # Prefer the S0-E6 code (cowflow devdrive create). Hosted images are
+      # Windows Server, which lacks Dev Drive support, so fall back to a plain
+      # ReFS VHDX made with diskpart (test only). If neither works,
+      # COWFLOW_TEST_REFS_DIR stays unset and the ReFS tests skip with a reason.
+      - name: create ReFS volume
+        shell: pwsh
+        run: |
+          $vhdx = "$env:RUNNER_TEMP\cow.vhdx"
+          $letter = 'R'
+          $project = Join-Path $env:RUNNER_TEMP 'devdrive-project'
+          New-Item -ItemType Directory -Force "$project\.cowflow" | Out-Null
+          git -C $project init -q
+          $slash = $vhdx -replace '\\', '/'
+          Set-Content -Path "$project\.cowflow\config.toml" -Value "[devdrive]`nenabled = true`npath = `"$slash`"`nmount = `"${letter}:`"`nsize_gb = 8`n"
+          go build -o "$env:RUNNER_TEMP\cowflow.exe" ./cmd/cowflow
+          Push-Location $project
+          & "$env:RUNNER_TEMP\cowflow.exe" devdrive create
+          Pop-Location
+          if (-not (Test-Path "${letter}:\")) {
+            Write-Host "Dev Drive unavailable on this image; formatting plain ReFS with diskpart"
+            Remove-Item -Force $vhdx -ErrorAction SilentlyContinue
+            $script = "create vdisk file=`"$vhdx`" maximum=8192 type=expandable`nattach vdisk`ncreate partition primary`nformat fs=refs quick`nassign letter=$letter`n"
+            Set-Content -Path "$env:RUNNER_TEMP\diskpart.txt" -Value $script -Encoding ascii
+            diskpart /s "$env:RUNNER_TEMP\diskpart.txt"
+          }
+          if (Test-Path "${letter}:\") {
+            New-Item -ItemType Directory -Force "${letter}:\cow" | Out-Null
+            "COWFLOW_TEST_REFS_DIR=${letter}:\cow" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          } else {
+            Write-Host "::warning::no ReFS volume available; ReFS tests will skip"
+          }
+          "COWFLOW_TEST_NTFS_DIR=$env:RUNNER_TEMP" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+      - name: test on ReFS and NTFS
+        shell: bash
+        run: |
+          pkgs="./test/fixtures/..."
+          for d in internal/workspace test/integration; do
+            if [ -d "$d" ]; then pkgs="$pkgs ./$d/..."; fi
+          done
+          go test -race -count=1 $pkgs

@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FreeBytes`): lowercase filesystem name, volume ID, mount path, Dev Drive
   state, block-refcounting hint and cluster size. `SameVolume` and
   `FreeBytes` also accept paths that do not exist yet.
+- Test fixtures: `test/fixtures/benchrepo` and the `genrepo` command generate
+  deterministic benchmark repositories offline (`small`, `large`, `monorepo`
+  profiles; Windows-safe paths; `--verify` reports the size of any repo), and
+  `test/fixtures/goproxy` builds a file-based `GOPROXY` for hermetic dependency
+  tests. CI gains `cow-linux` (btrfs, XFS), `cow-macos` and `cow-windows` jobs
+  that run the filesystem-dependent tests on real copy-on-write volumes.
 - Dev Drive auto-attach (`platform.NewAutoAttacher`, `NewAutoAttacherFor`):
   on Windows `Enable` registers the Task Scheduler task
   `\COWFlow\devdrive-attach-<hash of the VHDX path>`, which runs
