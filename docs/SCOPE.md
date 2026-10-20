@@ -270,19 +270,19 @@ type Capabilities struct {
 
 ### 6.4 VHDX ReFS (Dev Drive) — foundation on Windows
 
-**Provisioning.** `cowflow init --devdrive <size> [--path C:\cf\cowflow.vhdx] [--letter X]`:
+**Provisioning.** `cowflow init --devdrive <size> [--path C:\cf\cowflow.vhdx] [--letter X]` (`--path` defaults to `C:\cf\cowflow.vhdx`, `--letter` to `X`, a single letter D-Z; `devdrive create|attach|detach|status` take no flags and read `[devdrive]`):
 
 1. Checks for Windows 11 22H2+ and admin privilege (elevates once).
 2. Creates a dynamic VHDX via `virtdisk.dll` (`CreateVirtualDisk`) or falls back to PowerShell `New-VHD`.
 3. Attaches (`AttachVirtualDisk`), initializes GPT, creates a partition, formats ReFS with the Dev Drive flag (`Format-Volume -DevDrive`).
-4. Mounts on a drive letter or a mount point under `C:\cf\`.
-5. Registers it in the project state; configures auto-attach at boot (scheduled task or service).
-6. Writes `workspace.root`, `cache.*` inside the volume.
-7. Suggests excluding the volume in Defender (Dev Drive already reduces scanning by default).
+4. Mounts on a drive letter (v1 supports drive letters only; the `C:\cf\` mount-point form is §23 open question 8). A taken letter or an existing VHDX file is a conflict (exit `3`) that tells the user to pass `--letter` or `--path`; nothing is chosen automatically.
+5. Registers it in `[devdrive]` of `config.toml` only (`enabled`, `path`, `mount`, `size_gb`, `auto_attach`); there is no SQLite row and the observed state is probed live. Configures auto-attach at boot as a Windows Task Scheduler task named `\COWFlow\devdrive-attach-<first 12 hex of SHA-256 of the lower-cased canonical VHDX path>`: trigger at logon of the user who ran `init`, that user as principal with the highest run level, action = the absolute path of the running `cowflow.exe` with argument `devdrive attach` and the project root as working directory. It is registered through the fixed-script seam with values passed as validated parameters, never interpolated; registering and unregistering are idempotent. `devdrive.auto_attach = true` is written only when registration succeeded; otherwise `init` warns and points to `cowflow devdrive attach`. When the daemon service exists, it also attaches at start.
+6. Writes `workspace.root`, `workspace.golden_root` and all six `cache.*` keys inside the volume (`X:/ws`, `X:/golden`, `X:/cache/{pnpm,gomod,gobuild,cargo-target,gradle,pip}`; forward slashes) and creates the directories. `daemon.state_dir` is never written.
+7. Suggests excluding the volume in Defender (Dev Drive already reduces scanning by default). `init` only prints the `Add-MpPreference` command and never runs it.
 
 **Clone.** The provider walks the base tree (snapshot of the commit, kept as "golden" per `base_sha`) and, for each file, creates the destination and calls `FSCTL_DUPLICATE_EXTENTS_TO_FILE`. Directories are created; symlinks replicated. Cost: metadata, not data. A workspace is born in seconds regardless of repo size.
 
-**Golden trees.** `cowflow` keeps a cache of materialized trees per `base_sha` (`<root>/golden/<sha>`). The first workspace for a `base_sha` pays for the checkout; subsequent ones clone. GC by LRU and disk budget.
+**Golden trees.** `cowflow` keeps a cache of materialized trees per `base_sha` (`<golden_root>/<sha>`; `workspace.golden_root` is optional and an empty value means `<workspace.root>/golden`). `cow_clone` requires `golden_root` and `workspace.root` on one volume; otherwise capabilities report no COW and `auto` falls back to `git_worktree` with a warning. The first workspace for a `base_sha` pays for the checkout; subsequent ones clone. GC by LRU and disk budget.
 
 **Failures.** No Dev Drive: `doctor` explains and offers to create one. Volume not mounted: `workspace.pending_mount`, retry, never silently creates on NTFS.
 
@@ -335,8 +335,8 @@ Verified by `cowflow doctor`.
 - **ProjFS:** feature enabled when `projfs` is configured.
 - **Paths:** `core.longpaths=true`; `\\?\` above 240 chars; short root; canonicalization `Clean + EvalSymlinks + prefix`.
 - **Line endings:** `.gitattributes` with `* text=auto eol=lf`; `core.autocrlf=false` per worktree.
-- **Processes:** Job Object with `KILL_ON_JOB_CLOSE`; `CTRL_BREAK` → deadline → `TerminateJobObject`. Unix: `Setpgid` + `SIGTERM` + `SIGKILL`.
-- **Handles:** destroy fails → `pending_cleanup` with retry and diagnostics. Defender with volume exclusion.
+- **Processes:** Job Object with `KILL_ON_JOB_CLOSE`; `CTRL_BREAK` → deadline → `TerminateJobObject` (when sending `CTRL_BREAK` fails because there is no console, the grace wait is skipped and `TerminateJobObject` follows directly; logged at debug). Unix: `Setpgid` + `SIGTERM` + `SIGKILL`.
+- **Handles:** destroy fails → `pending_cleanup` with retry and diagnostics. Defender exclusion suggested; `doctor` check `defender.exclusion` is `ok` when the mount is excluded, `warn` (fix = the `Add-MpPreference` command) when not, and `skip` when it cannot be read (not elevated or Defender not active); never `fail`.
 - **Service:** `cowflow daemon install` via `x/sys/windows/svc`; VHDX auto-attach before the daemon.
 - **Shell:** never `cmd.exe` with a string; gates are arrays.
 
@@ -387,7 +387,7 @@ Updated in the same transaction as the publish/intent. `cowflow index rebuild` r
 |---|---|---|
 | `merge` | **yes** | merges the retention ref; preserves identity |
 | `cherry-pick` | explicit | isolated commit; trailer `x-cowflow-source` |
-| `squash-merge` | explicit | a single local commit |
+| `squash` | explicit | a single local commit |
 
 ### 8.5 Change states
 
@@ -415,7 +415,9 @@ Waiting: `blocked` + event; declared stub (`stub: true` in the intent); escalate
 
 ### 9.4 Lead
 
-`lead = "human"` (default) or `agent:<task-id>`. Receives overdue requests (`escalation_after`), disputes, repeated overlaps, promotion requests. Reviews by **intent**: `integration show` presents each task's intent, manifest/stat, touched contracts, gate results, and invariants. Lines only on demand (`--diff`).
+`lead = "human"` (default) or `agent:<task-id>`. Receives overdue requests (`escalation_after_minutes`), disputes, repeated overlaps, promotion requests. Reviews by **intent**: `integration show` presents each task's intent, manifest/stat, touched contracts, gate results, and invariants. Lines only on demand (`--diff`).
+
+Escalation SLA applies to *open* requests: the minutes a request waits for accept/reject before `cross_request.escalated` goes to the lead, per priority (`[collaboration.escalation_after_minutes]`: `high`, `normal`, `low`; `0` = no SLA, never auto-escalated). After accept, the ETA from accept governs. The default request priority is `normal`.
 
 ### 9.5 Contracts
 
@@ -427,7 +429,7 @@ Waiting: `blocked` + event; declared stub (`stub: true` in the intent); escalate
 [[invariants]]
 name = "no-cmd-import-in-internal"
 kind = "pattern"
-deny = ["internal/**: import \"cowflow/cmd"]
+deny = ["internal/**: import \"github.com/deverity/cowflow/cmd"]
 
 [[invariants]]
 name = "no-linear-log-scan"
@@ -531,7 +533,7 @@ With `promotion_mode = "auto"` and `post_promotion.enabled = true`: after promot
 
 ### 10.3 Policies
 
-`promotion_mode = manual|auto`; `branching = gitflow|trunk`; `max_concurrent_per_target = 1` (serializes only the ref).
+`promotion_mode = manual|auto` (`pr` is post-v1, §23 open question 7; validation rejects it as "not supported in v1"); `branching = gitflow|trunk`; `[scheduler] max_integrations_per_target = 1` (serializes only the ref; the only key, no alias).
 
 ---
 
@@ -651,7 +653,7 @@ SQLite WAL, `busy_timeout`, migrations via `embed`.
 
 `projects`, `tasks`, `task_dependencies`, `contracts`, `invariants`, `agent_sessions`, `workspaces`, `golden_trees`, `presence`, `intents`, `cross_requests`, `cross_request_comments`, `changes`, `change_files`, `sync_attempts`, `integration_groups`, `integration_group_members`, `integration_attempts`, `path_index`, `contract_refs`, `change_ancestry`, `resources`, `resource_leases`, `resource_queue`, `events`, `event_deliveries`, `outbox`, `budgets`, `audit_log`.
 
-Prefixed ULID IDs. State + event in the same transaction. Derived indexes are recomputable.
+Prefixed ULID IDs: `<prefix>_<26-char Crockford ULID>`, prefix of 2-3 lower-case letters, validated by `domain.ParseID` (`^[a-z]{2,3}_[0-9A-HJKMNP-TV-Z]{26}$`). One prefix per kind: `projects` `prj`, `tasks` `tsk`, `contracts` `ctr`, `invariants` `inv`, `agent_sessions` `ses`, `workspaces` `wks`, `golden_trees` `gld`, `intents` `int`, `cross_requests` `req`, `cross_request_comments` `cmt`, `changes` `chg`, `sync_attempts` `syn`, `integration_groups` `grp`, `integration_attempts` `att`, `resource_leases` `lse`, `events` `evt`, `budgets` `bud`, `audit_log` `aud`, `operations` `op`. Name- or composite-keyed tables get no prefix. State + event in the same transaction. Derived indexes are recomputable.
 
 ---
 
@@ -660,7 +662,7 @@ Prefixed ULID IDs. State + event in the same transaction. Derived indexes are re
 ```powershell
 # Setup
 cowflow init [--devdrive 50GB] [--provider auto|cow_clone|projfs|git_worktree]   # generates .mcp.json and the lead token
-cowflow mcp --role lead|worker|watchdog
+cowflow mcp [--role lead|worker|watchdog]   # no cobra default: the role of COWFLOW_SESSION_TOKEN when set, else lead; a conflicting explicit --role is a usage error
 cowflow doctor
 cowflow daemon start|stop|status|install
 cowflow devdrive create|attach|detach|status
@@ -716,7 +718,13 @@ cowflow budget
 cowflow mcp
 ```
 
-`--json` everywhere. Exit codes: `0` ok, `1` usage, `2` state, `3` conflict, `4` refused by policy.
+`--json` everywhere. There is no `version` subcommand; `cowflow --version` only, and `--version --json` prints `{"version":"…","commit":"…","date":"…"}`.
+
+Exit codes: `0` ok, `1` usage, `2` state, `3` conflict, `4` refused by policy. The rule: `1` the command line or config file is wrong; `2` machine/project state prevents it; `3` it collides with something that exists; `4` a COWFlow rule refused it and only `--force` or the lead may override. Classification of the cases above: `doctor` with at least one `fail` is `2` (`warn` never); a command stub not implemented is `2`; an unclassified internal error is `2`; UAC declined or not elevated is `2`; unsupported OS or build is `2`; already exists or drive letter in use is `3`; a config that fails to parse or validate is `1`; a config missing when required is `2`; `workspace destroy` refused for unpreserved work without `--force` is `4`.
+
+`init --provider` accepts exactly `auto|cow_clone|projfs|git_worktree`; `container` is config-only and valid only in a `container`-tagged build.
+
+The project's `config.toml` lives at `<project root>/.cowflow/config.toml`. `config.Locate()` walks up from the current directory: the first directory containing `.cowflow/config.toml` wins; else the first directory containing `.git` (directory or file) gives `<that dir>/.cowflow/config.toml` (init creates it); else `<cwd>/.cowflow/config.toml`. It is pure filesystem (no git subprocess, no environment variable). `cowflow mcp --project <dir>` runs it from `<dir>`.
 
 ---
 
@@ -748,7 +756,7 @@ Stdio, token via `COWFLOW_SESSION_TOKEN`. The agent does not choose `workspace_i
 
 `cowflow_wait_events(filter, after_cursor, timeout_seconds ≤ 300)` returns events and a new cursor; never blocks beyond the timeout.
 
-The lead token is issued by `cowflow init` to the local user, not per session; scope = entire project. `promote` with `promotion_mode = manual` returns `pending_human_approval` and does not promote.
+The lead token is issued by `cowflow init` to the local user, not per session; scope = entire project. It is stored per user: Windows `%LOCALAPPDATA%\cowflow\tokens\<project_id>.lead`, Linux `${XDG_STATE_HOME:-$HOME/.local/state}/cowflow/tokens/<project_id>.lead`, macOS `$HOME/Library/Application Support/cowflow/tokens/<project_id>.lead`; its hash is `projects.lead_token_hash`. `promote` with `promotion_mode = manual` returns `pending_human_approval` and does not promote.
 
 ### 15.2 Generated `.mcp.json`
 
@@ -777,7 +785,7 @@ cmd             = ["claude", "-p"]
 mcp_config_flag = ["--mcp-config", "{mcp_config}"]
 permission_flag = ["--dangerously-skip-permissions"]
 context_file    = "CLAUDE.md"
-prompt_mode     = "arg"            # arg | stdin | file
+prompt_mode     = "arg"            # arg | stdin | file (validation rejects anything else)
 
 [runner.codex]
 provider        = "openai"
@@ -789,11 +797,11 @@ prompt_mode     = "arg"
 
 [runner.aider]
 provider        = "openai"
-cmd             = ["aider", "--yes"]
+cmd             = ["aider", "--yes", "--message"]
 mcp_config_flag = []               # uses cowflow --json via shell
 permission_flag = []
 context_file    = "CONVENTIONS.md"
-prompt_mode     = "message"
+prompt_mode     = "arg"
 
 [runner.gemini]
 provider        = "google"
@@ -924,7 +932,7 @@ Per-session scoped token; loopback; no concatenated shell; sanitized names (`che
 
 ### 18.1 Hermetic harness
 
-`test/harness` provides: fake clock, Git repository on tmpfs, fault injection into the Git subprocess (exit code, timeout, truncated output), simulated disk full, daemon crash between outbox write and delivery, simulated VHDX (interface) and simulated ProjFS (in-memory callbacks). Every scenario in the table above has a test in this harness. Fuzzing of manifest parsers and API payloads.
+`test/harness` provides: fake clock, Git repository in a throw-away temp directory (tmpfs on Linux), fault injection into the Git subprocess (exit code, timeout, truncated output), simulated disk full, daemon crash between outbox write and delivery, simulated VHDX (interface) and simulated ProjFS (in-memory callbacks). Every scenario in the table above has a test in this harness. Fuzzing of manifest parsers and API payloads.
 
 ---
 
@@ -1008,10 +1016,13 @@ Logs with `project_id`, `task_id`, `session_id`, `workspace_id`, `request_id`, `
 
 ## 22. Configuration
 
+This block is the defaults file: every scalar here is the built-in default except `daemon.state_dir` (derived, see §14), `devdrive.path|mount|size_gb` (`enabled = false` is the default), `workspace.root`, `workspace.golden_root`, all `cache.*`, `runner.default` and `runner.lead` (deferred to Phase 3). `[[gates]]`, `[[invariants]]`, `[[resources]]`, `[runner.<name>]` and `[scheduler.llm.<provider>]` are examples with no defaults. Empty values for `branching`, `preset`, `queue`, `retry_backoff_seconds` and `bind` fail validation. An empty `workspace.root` makes workspace creation fail with exit `2` ("set workspace.root or run cowflow init --devdrive").
+
 ```toml
 [daemon]
 bind = "127.0.0.1:8787"
-state_dir = "X:/state"
+# state_dir: default is <dir of config.toml>/state; a relative value resolves against the config file's dir;
+# the SQLite DB is <state_dir>/cowflow.db. `init --devdrive` never writes it.
 log_level = "info"
 
 [project]
@@ -1029,7 +1040,7 @@ auto_attach = true
 [workspace]
 provider = "auto"               # auto | cow_clone | projfs | git_worktree | container
 root = "X:/ws"
-golden_root = "X:/golden"
+golden_root = "X:/golden"        # optional; golden tree at <golden_root>/<sha>; empty = <root>/golden
 keep_failed_workspaces = true
 keep_failed_hours = 72
 cleanup_completed = false
@@ -1048,6 +1059,8 @@ pnpm_store   = "X:/cache/pnpm"
 go_modcache  = "X:/cache/gomod"
 go_cache     = "X:/cache/gobuild"
 cargo_target = "X:/cache/cargo-target"
+gradle_home  = "X:/cache/gradle"
+pip_cache    = "X:/cache/pip"
 
 [git]
 shared_ref_namespace = "refs/cowflow/changes"
@@ -1076,12 +1089,16 @@ on_budget_exceeded = "pause"
 [collaboration]
 presence_ttl_seconds = 90
 heartbeat_interval_seconds = 20
-escalation_after_minutes = 30
 event_delivery = "sse"
+
+[collaboration.escalation_after_minutes]
+high   = 15
+normal = 60
+low    = 0                         # 0 = no SLA, never auto-escalated
 
 [integration]
 require_validation = true
-promotion_mode = "manual"
+promotion_mode = "manual"        # manual | auto
 rerun_on_stale = true
 diff_only_first = true
 
@@ -1111,7 +1128,7 @@ required = false
 [[invariants]]
 name = "no-cmd-import-in-internal"
 kind = "pattern"
-deny = ["internal/**: import \"cowflow/cmd"]
+deny = ["internal/**: import \"github.com/deverity/cowflow/cmd"]
 check_on_publish = true
 
 [[resources]]
@@ -1141,6 +1158,7 @@ tag_format = "v{major}.{minor}.{patch}"
 
 [scheduler.llm.anthropic]
 max_concurrent_requests = 5
+tokens_per_hour_budget = 2000000
 cost_per_day_budget_usd = 80
 
 [scheduler.llm.openai]
@@ -1173,6 +1191,8 @@ enabled = false
 budget_tokens_per_hour = 200000
 
 [security]
+# Configurable list enforced at publish, next to the fixed built-in never-commit list (§24.13).
+# A value in the file REPLACES this default.
 blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]
 ```
 
@@ -1185,7 +1205,7 @@ blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]
 | Risk | Mitigation |
 |---|---|
 | Agent ignores protocol | server-side enforcement + injection + visible `blocked` |
-| Request blocks agent | `escalation_after`, declared stub, lead |
+| Request blocks agent | `escalation_after_minutes`, declared stub, lead |
 | Semantic conflict | contracts + `contract.changed` + gates + invariants |
 | Dev Drive unavailable (Win10, no admin) | explicit worktree fallback; `doctor` guides |
 | VHDX unmounts on boot | auto-attach + `pending_mount`; never silent NTFS |
@@ -1218,6 +1238,30 @@ blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]
 11. Per-file manifest in the change; derived index in SQLite.
 12. Diff-only gates before workspace.
 13. Web dashboard is post-v1 (Sprint 7): read-only, plain HTML + JavaScript embedded in the binary via `go:embed`, served by the daemon on loopback, live updates over the existing SSE stream. No Node toolchain.
+14. `integration.promotion_mode` is `manual|auto` in v1; `pr` is post-v1 (open question 7) and validation rejects it (SPEC-GAPS C3, resolved).
+15. The squash strategy is spelled `squash` in the CLI, config and stored value; accepted: `merge|cherry-pick|squash` (SPEC-GAPS C4, resolved).
+16. The only per-target integration key is `[scheduler] max_integrations_per_target`, with no alias (SPEC-GAPS C5, resolved).
+17. The invariant example import path is `github.com/deverity/cowflow/cmd` (SPEC-GAPS C6, resolved).
+18. `workspace.golden_root` stays and is optional; the golden tree is `<golden_root>/<sha>`, empty means `<workspace.root>/golden` (SPEC-GAPS C7, resolved).
+19. `[collaboration.escalation_after_minutes]` is a table `high = 15`, `normal = 60`, `low = 0` (0 = no SLA); it applies to open requests, the accept ETA governs afterwards; default priority `normal` (SPEC-GAPS C9, resolved).
+20. `prompt_mode` stays `arg|stdin|file`; Aider uses `cmd = ["aider", "--yes", "--message"]` with `prompt_mode = "arg"`; validation rejects `message` (SPEC-GAPS C10, resolved).
+21. The §15.3 `[scheduler.llm.anthropic]` block is canonical; §22 and `config.example.toml` copy it (SPEC-GAPS C11, resolved).
+22. Two independent publish-time lists: a fixed built-in never-commit list (`node_modules/`, `.cowflow/`, `*.log`, `.env*`; not configurable) and `[security] blocked_patterns` (configurable, default = §22 list, a file value replaces it) (SPEC-GAPS C12, resolved).
+23. `[cache]` has the six §6.7 keys; `init --devdrive` writes all six and creates the directories (SPEC-GAPS C13, resolved).
+24. The Defender exclusion is suggested only; `doctor` check `defender.exclusion` is `ok`/`warn`/`skip`, never `fail` (SPEC-GAPS C14, resolved).
+25. `config.toml` is `<project root>/.cowflow/config.toml`, found by `config.Locate()` (pure filesystem walk); `state_dir` defaults to `<config dir>/state`, DB at `<state_dir>/cowflow.db`; the lead token is stored per user outside the repository (SPEC-GAPS U-API-1, resolved).
+26. `cowflow mcp --role` has no default: the role of `COWFLOW_SESSION_TOKEN`, else `lead`; a conflicting explicit `--role` is a usage error (SPEC-GAPS U-API-6, resolved).
+27. `init --provider` accepts exactly `auto|cow_clone|projfs|git_worktree`; `container` is config-only and valid only in a `container`-tagged build (SPEC-GAPS U-API-10, resolved).
+28. §22 is the defaults file, with the listed exceptions and examples-only blocks; empty values for `branching`, `preset`, `queue`, `retry_backoff_seconds` and `bind` fail validation; the Dev Drive layout written by `init --devdrive` is fixed (SPEC-GAPS U-API-11, resolved).
+29. Exit codes use the existing numbers `0`-`4` under the rule stated in §14 (SPEC-GAPS U-API-12, resolved).
+30. No `version` subcommand; `cowflow --version` only, with a JSON form (SPEC-GAPS U-API-13, resolved).
+31. `cow_clone` requires `golden_root` and `workspace.root` on one volume, else no COW and `auto` falls back to `git_worktree` with a warning (SPEC-GAPS U-PLAT-4, resolved).
+32. VHDX auto-attach is a Windows Task Scheduler task registered at logon of the user who ran `init`, as specified in §6.4 step 5 (SPEC-GAPS U-PLAT-5, resolved).
+33. Interim rule: when `GenerateConsoleCtrlEvent(CTRL_BREAK)` fails (no console), skip the grace wait and go straight to `TerminateJobObject`, logging at debug; the service-mode design stays open until Phase 4 (SPEC-GAPS U-PLAT-6, open).
+34. The hermetic harness uses tmpfs on Linux (`/dev/shm` when writable, else a temp directory); Windows and macOS use a temp directory (SPEC-GAPS U-PLAT-8, resolved).
+35. `init --devdrive` defaults `--path` to `C:\cf\cowflow.vhdx` and `--letter` to `X`; a taken letter or existing file is a conflict (exit `3`); `devdrive create|attach|detach|status` take no flags and read `[devdrive]`; v1 mounts on a drive letter only (SPEC-GAPS U-PLAT-9, resolved except the mount-point form, open question 8).
+36. Dev Drive registration is `[devdrive]` in `config.toml` only; no SQLite row; observed state is probed live (SPEC-GAPS U-PLAT-10, resolved).
+37. ID prefixes are fixed per kind in §13 and validated by `domain.ParseID` (SPEC-GAPS U-DATA-2, resolved).
 
 ### Open questions
 
@@ -1227,6 +1271,8 @@ blocked_patterns = [".env", ".env.*", "*.pem", "*.key", "id_rsa*"]
 4. Minimum scope of the agent lead.
 5. ProjFS: enumerate outside the scope as empty vs lazy (Phase 6 benchmark).
 6. Golden tree per `base_sha` vs per branch (Phase 1 benchmark).
+7. Promotion via a forge PR when a remote/forge exists (`promotion_mode = "pr"`; post-v1, SPEC-GAPS C3).
+8. Mounting the Dev Drive on a directory under `C:\cf\` instead of a drive letter (SPEC-GAPS U-PLAT-9).
 
 ---
 
@@ -1265,7 +1311,7 @@ Branch rules:
 | Hotfix on `main` **and** `develop` | promoting a hotfix to `main` automatically creates integration group `hotfix → develop` and notifies the lead |
 | Release | `release/*` promoted to `main` generates tag `v{major}.{minor}.{patch}` (lead confirms version) and a return integration group to `develop` |
 | Tags | only the engine creates tags; agents have no permission |
-| PR | when remote and forge are configured, promotion opens a PR instead of merging locally; `promotion_mode = "pr"` |
+| PR | post-v1 (§23 open question 7): when a remote and forge are configured, promotion would open a PR instead of merging locally; v1 has no `pr` promotion mode |
 
 ### 24.3 Commits
 
@@ -1293,7 +1339,7 @@ Branch rules:
 ### 24.6 Agent-to-agent communication
 
 - Question about an interface → `confirm_contract` before implementing, not after.
-- Blocked > `escalation_after` → escalate, don't wait in silence.
+- Blocked > `escalation_after_minutes` → escalate, don't wait in silence.
 - A declared stub (`stub: true`) is temporary; a task doesn't enter an integration group with an active stub.
 - A rejected request carries the reason in a comment.
 
@@ -1362,7 +1408,7 @@ Rules:
 - **One request, one deliverable.** Concrete `expected_output`: signature, file, test. "Help me with auth" is rejected by the server for lacking `expected_output`.
 - **Accepting is a commitment with an ETA.** `accept` carries `eta_minutes`. Overran → `resource.announce`-like: a comment with the new ETA, or `reject` with a reason.
 - **Reject with a reason and an alternative.** `reject` without a comment is rejected.
-- **SLA by priority:** `high` 15 min to respond (accept/reject), `normal` 60 min, `low` no SLA. Missed → automatic `escalation`.
+- **SLA by priority:** `[collaboration.escalation_after_minutes]`: `high` 15 min to respond (accept/reject), `normal` 60 min (the default priority), `low` no SLA. Applies to open requests; after accept the ETA governs. Missed → automatic `cross_request.escalated` to the lead.
 - **Delivery is a linked change.** `deliver` without `change_id` is only accepted for `expected_output = answer`.
 - **Whoever asks, closes.** The requester does `close` after sync + test. The lead closes abandoned ones.
 - **Don't negotiate implementation in the request.** Disagree with the interface → `confirm_contract`, not an endless thread.
@@ -1382,7 +1428,7 @@ Rules:
 - **Start:** `get_context` → read contracts → `announce_intent` → `resource_check` for what it will use.
 - **Checkpoint:** publish at every compilable milestone, at least every 45 min of active work. A session that dies without publishing loses everything for the team (the workspace remains, but nobody sees it).
 - **End:** `report_result` with acceptance criteria answered, `report_status(completed|failed)`. A session without `report_result` is marked `incomplete` in review.
-- **Never commit:** `node_modules/`, `.cowflow/`, `*.log`, build artifacts, `.env*`. `init` generates/updates `.gitignore`; publish rejects a manifest with these paths.
+- **Never commit:** `node_modules/`, `.cowflow/`, `*.log`, `.env*` (a fixed built-in list, not configurable) and build artifacts (advice only, not enforced). `init` generates/updates `.gitignore`; publish rejects a manifest with the enforced paths. Independently, publish rejects paths matching `[security] blocked_patterns` (configurable; default in §22; a file value replaces the default).
 - **Ports only from the range.** A service on a port outside the workspace's `port_range` is a log warning and an optional invariant.
 - **The workspace is disposable.** Nothing that matters lives only in it. Matters → publish.
 

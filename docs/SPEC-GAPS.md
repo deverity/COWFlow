@@ -19,18 +19,18 @@ their group; resolved items are struck through, never renumbered.
 |---|---|---|---|
 | ~~C1~~ | ~~Go version~~ | Resolved: Go 1.26+ (SCOPE.md §23 settled decision 1). | header, §16, §23 |
 | C2 | Task branch naming | `cowflow/<project>/<task-slug>` vs `<kind>/<slug>` under the gitflow preset. | §8.1, §24.2 |
-| C3 | `promotion_mode` values | `manual\|auto` vs also `pr`; remote/forge config for `pr` undefined. | §10.3, §22, §24.2 |
-| C4 | Sync strategy name | `squash-merge` vs CLI `--strategy squash`. | §8.4, §14 |
-| C5 | Per-target integration limit | `max_concurrent_per_target` vs `max_integrations_per_target`. | §10.3, §11, §22 |
-| C6 | Invariant example import path | `cowflow/cmd` does not match module `github.com/deverity/cowflow`. | §9.6, §22 |
-| C7 | Golden tree location | `<root>/golden/<sha>` vs separate `workspace.golden_root`. | §6.4, §22 |
+| ~~C3~~ | ~~`promotion_mode` values~~ | Resolved: `manual\|auto` in v1; `pr` is open question 7 (SCOPE.md §23 decision 14). | §10.3, §22, §24.2 |
+| ~~C4~~ | ~~Sync strategy name~~ | Resolved: `squash` everywhere (SCOPE.md §23 decision 15). | §8.4, §14 |
+| ~~C5~~ | ~~Per-target integration limit~~ | Resolved: `max_integrations_per_target` only (SCOPE.md §23 decision 16). | §10.3, §11, §22 |
+| ~~C6~~ | ~~Invariant example import path~~ | Resolved: `github.com/deverity/cowflow/cmd` (SCOPE.md §23 decision 17). | §9.6, §22 |
+| ~~C7~~ | ~~Golden tree location~~ | Resolved: `<golden_root>/<sha>`, empty = `<root>/golden` (SCOPE.md §23 decision 18). | §6.4, §22 |
 | C8 | Contract edit precondition | publish needs an *open* `confirm_contract` vs edit needs an *accepted* one. | §24.8, §24.14 |
-| C9 | Cross-request escalation | per-priority SLA (15/60 min) vs single `escalation_after_minutes = 30`. | §9.4, §22, §24.11 |
-| C10 | Runner config | Aider `prompt_mode = "message"` not in `arg\|stdin\|file`. | §15.3, §22 |
-| C11 | `[scheduler.llm.anthropic]` | Two examples with different contents. | §15.3, §22 |
-| C12 | Never-commit lists | §24.13 list and `[security] blocked_patterns` differ; relationship unstated. | §22, §24.13 |
-| C13 | Cache keys | `gradle_home`, `pip_cache` in §6.7 but missing from `[cache]` example. | §6.7, §22 |
-| C14 | Defender exclusion | "suggest" vs required configuration. | §6.4, §7 |
+| ~~C9~~ | ~~Cross-request escalation~~ | Resolved: `[collaboration.escalation_after_minutes]` table (SCOPE.md §23 decision 19). | §9.4, §22, §24.11 |
+| ~~C10~~ | ~~Runner config~~ | Resolved: `prompt_mode` stays `arg\|stdin\|file` (SCOPE.md §23 decision 20). | §15.3, §22 |
+| ~~C11~~ | ~~`[scheduler.llm.anthropic]`~~ | Resolved: the §15.3 block is canonical (SCOPE.md §23 decision 21). | §15.3, §22 |
+| ~~C12~~ | ~~Never-commit lists~~ | Resolved: two independent lists (SCOPE.md §23 decision 22). | §22, §24.13 |
+| ~~C13~~ | ~~Cache keys~~ | Resolved: six `[cache]` keys (SCOPE.md §23 decision 23). | §6.7, §22 |
+| ~~C14~~ | ~~Defender exclusion~~ | Resolved: suggested only; `doctor` never fails (SCOPE.md §23 decision 24). | §6.4, §7 |
 | C15 | Runner host before the daemon | The runner is a daemon-only capability, but runners ship in Phase 3 and the daemon in Phase 4. | §5.3, §19 |
 | C16 | Integration group creation | Phase 3 lead tools and §20.27 need `cowflow_create_integration`; integration groups arrive in Phase 5 (engine is daemon-only). | §5.3, §15.1, §19, §20 |
 | C17 | `cowflow_wait_events` signature | `(filter, after_cursor, timeout_seconds)` vs `until=tasks_completed` in the lead flow. | §5.4, §15.1 |
@@ -39,8 +39,9 @@ their group; resolved items are struck through, never renumbered.
 
 ### Data model and events
 
-- **U-DATA-1** Columns of `events`, `outbox`, `event_deliveries`; where `op_id` is stored (§13).
-- **U-DATA-2** Prefixes for "prefixed ULIDs" (§13).
+- **U-DATA-1** *(Sprint 2, with U-DATA-3)* Columns of `events`, `outbox`, `event_deliveries`; where `op_id` is stored (§13).
+  Recommended shape: `events(seq INTEGER PK AUTOINCREMENT, id TEXT UNIQUE evt_ULID, project_id, type, subject_kind, subject_id, task_id, session_id, payload JSON, op_id, created_at)` with `seq` as the public cursor; `outbox(event_seq PK -> events.seq, state pending|delivered|failed, attempts, next_attempt_at, last_error)`; `event_deliveries(event_seq, consumer, delivered_at, acked_at, PK(event_seq, consumer))`; `operations(op_id TEXT PK, project_id, kind, result JSON, created_at)` written in the same transaction by `WithTx`.
+- ~~**U-DATA-2** Prefixes for "prefixed ULIDs" (§13).~~ Resolved: `<prefix>_<ULID>` with a fixed prefix table (SCOPE.md §23 decision 37).
 - **U-DATA-3** Whether the event cursor is the ULID; ULIDs from concurrent daemonless writers are not commit-ordered, so a ULID cursor can skip events (§9.9).
 - **U-DATA-4** Concrete `cross_request.*` event names; `scope.exceeded` missing from the event list (§9.9, §24.9).
 - **U-DATA-5** States of integration groups, workspaces (beyond `ready`, `pending_mount`, `pending_cleanup`), and `resource_leases.state` (§6, §9.8, §10).
@@ -74,13 +75,13 @@ their group; resolved items are struck through, never renumbered.
 - **U-PLAT-1** How a `cow_clone` tree gets its own HEAD and index (§6.1).
 - **U-PLAT-2** Rescue-before-destroy format and storage location (§17).
 - **U-PLAT-3** Sparse `always` set beyond "root, configs" (§6.6).
-- **U-PLAT-4** Same-volume requirement between `golden_root` and `workspace.root` for block clone (§6.4).
-- **U-PLAT-5** Auto-attach of the VHDX at boot: scheduled task vs service (§6.4).
-- **U-PLAT-6** `CTRL_BREAK` cancellation when running as a Windows service (no console) (§7).
+- ~~**U-PLAT-4** Same-volume requirement between `golden_root` and `workspace.root` for block clone (§6.4).~~ Resolved: same volume required, else fall back to `git_worktree` (SCOPE.md §23 decision 31).
+- ~~**U-PLAT-5** Auto-attach of the VHDX at boot: scheduled task vs service (§6.4).~~ Resolved: Task Scheduler task at logon (SCOPE.md §23 decision 32).
+- **U-PLAT-6** *(Phase 4, S4-E9)* `CTRL_BREAK` cancellation when running as a Windows service (no console) (§7). Interim rule (SCOPE.md §23 decision 33): when `GenerateConsoleCtrlEvent(CTRL_BREAK)` fails (no console), skip the grace wait and go straight to `TerminateJobObject`; log at debug.
 - **U-PLAT-7** Build tag for the container backend; "restricted network" for containers (§6.3, §15.4).
-- **U-PLAT-8** Hermetic harness "Git repo on tmpfs" on Windows/macOS (§18.1).
-- **U-PLAT-9** Flags of `devdrive create|attach|detach|status`; defaults of `init --devdrive` path and letter; form of the mount point under `C:\cf\` (§6.4, §14).
-- **U-PLAT-10** Where the Dev Drive is "registered in the project state": `[devdrive]` in `config.toml`, SQLite, or both (§6.4).
+- ~~**U-PLAT-8** Hermetic harness "Git repo on tmpfs" on Windows/macOS (§18.1).~~ Resolved: tmpfs on Linux only (SCOPE.md §23 decision 34).
+- **U-PLAT-9** Form of the mount point under `C:\cf\` (§6.4, §23 open question 8). Flags and defaults of `devdrive` and `init --devdrive` are resolved (SCOPE.md §23 decision 35); v1 mounts on a drive letter only.
+- ~~**U-PLAT-10** Where the Dev Drive is "registered in the project state": `[devdrive]` in `config.toml`, SQLite, or both (§6.4).~~ Resolved: `[devdrive]` in `config.toml` only (SCOPE.md §23 decision 36).
 - **U-PLAT-11** Workspace directory name under `workspace.root` and location of per-workspace logs (§5.4, §6.1).
 - **U-PLAT-12** Benchmark definitions: which timing counts for "< 2 s each" (in-process vs CLI, sequential vs concurrent); what "setup" means for the shared-cache gain (§19, §20).
 - **U-PLAT-13** What "in use" means for golden GC; states of `golden_trees` rows (§6.4, §11, §13).
@@ -95,19 +96,19 @@ their group; resolved items are struck through, never renumbered.
 
 ### Daemon, API, CLI, MCP
 
-- **U-API-1** SQLite file name/location under `state_dir`; `config.toml` location; lead token storage (§5, §15, §22).
+- ~~**U-API-1** SQLite file name/location under `state_dir`; `config.toml` location; lead token storage (§5, §15, §22).~~ Resolved: `<project root>/.cowflow/config.toml`, `config.Locate()`, `<state_dir>/cowflow.db`, per-user lead token (SCOPE.md §23 decision 25).
 - **U-API-2** How the daemon starts on demand; how CLI/MCP detect daemon vs daemonless (§5.3).
 - **U-API-3** `/metrics` format (§21).
 - **U-API-4** HTTP status ↔ CLI exit code mapping (§12, §14).
 - **U-API-5** `request_id` in logs: cross-request vs HTTP request (§21).
-- **U-API-6** Default role of `cowflow mcp` without `--role` (§14, §15).
+- ~~**U-API-6** Default role of `cowflow mcp` without `--role` (§14, §15).~~ Resolved: role of the session token, else `lead` (SCOPE.md §23 decision 26).
 - **U-API-7** Codex MCP config passes no role/token; Gemini `.gemini/settings.json` path and writer; generic runner has no permission/MCP flags (§15.3).
 - **U-API-8** How session tokens are validated in daemonless mode (§5.3, §15).
 - **U-API-9** Watchdog tool set: worker base + extras, or read-only + requests only (§5.4, §15.1).
-- **U-API-10** `init --provider` omits `container` (§14, §22).
-- **U-API-11** Which §22 values are defaults vs examples.
-- **U-API-12** Exit codes for cases §14 does not classify: `doctor` with failing checks, a not-yet-implemented command, an unclassified internal error, UAC elevation declined, `workspace destroy` refused for unpreserved work (`2` or `4`) (§14).
-- **U-API-13** The bootstrap `version` subcommand is not in §14: keep it, or only `--version` (§14).
+- ~~**U-API-10** `init --provider` omits `container` (§14, §22).~~ Resolved: exactly `auto|cow_clone|projfs|git_worktree` (SCOPE.md §23 decision 27).
+- ~~**U-API-11** Which §22 values are defaults vs examples.~~ Resolved: §22 is the defaults file with listed exceptions (SCOPE.md §23 decision 28).
+- ~~**U-API-12** Exit codes for cases §14 does not classify: `doctor` with failing checks, a not-yet-implemented command, an unclassified internal error, UAC elevation declined, `workspace destroy` refused for unpreserved work (`2` or `4`) (§14).~~ Resolved: exit-code rule in §14 (SCOPE.md §23 decision 29).
+- ~~**U-API-13** The bootstrap `version` subcommand is not in §14: keep it, or only `--version` (§14).~~ Resolved: `--version` only (SCOPE.md §23 decision 30).
 - **U-API-14** No CLI flag for a task's `sparse = false` (§6.6, §14).
 - **U-API-15** No CLI verb to create/update an intent or report presence; only MCP and API (§9.1, §9.2, §14).
 - **U-API-16** CLI caller identity in daemonless mode: origin of `request send`, actor of `accept`/`deliver`, session of a publish (§5.4, §24.14).

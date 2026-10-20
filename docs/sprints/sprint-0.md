@@ -102,30 +102,30 @@ None. Sprint 0 starts from the bootstrap repository (`go.mod` with `module githu
 | Gap | What is undecided | Tasks affected | What is blocked until decided |
 |---|---|---|---|
 | ~~`C1`~~ | Resolved: Go 1.26+ (`go 1.26.0` plus a `toolchain` line), SCOPE.md §23 decision 1 | S0-T01, S0-T23 | Nothing. |
-| `C3` | `promotion_mode` values `manual\|auto` vs also `pr` | S0-T04 | The enum check for `integration.promotion_mode`. |
-| `C4` | Sync strategy `squash-merge` vs `--strategy squash` | S0-T02, S0-T04 | Accepted values for `git.default_sync_strategy` and the help text of `sync --strategy`. |
-| `C5` | `max_concurrent_per_target` vs `max_integrations_per_target` | S0-T03 | Which key name(s) the schema accepts. |
-| `C6` | Invariant example import path `cowflow/cmd` | S0-T05 | The `[[invariants]]` example in `config.example.toml`. |
-| `C7` | Golden trees at `<root>/golden/<sha>` vs `workspace.golden_root` | S0-T03, S0-T18 | Whether `workspace.golden_root` exists in the schema and whether `init --devdrive` writes it. |
-| `C9` | Per-priority SLA vs `escalation_after_minutes` | S0-T03 | Keys under `[collaboration]`. |
-| `C10` | Aider `prompt_mode = "message"` | S0-T04 | The `prompt_mode` enum check. |
-| `C11` | Two `[scheduler.llm.anthropic]` examples | S0-T05 | That block in `config.example.toml`. |
-| `C12` | §24.13 never-commit list vs `blocked_patterns` | S0-T04 | Default value of `security.blocked_patterns`. |
-| `C13` | `gradle_home`, `pip_cache` missing from `[cache]` example | S0-T03, S0-T18 | Keys of `[cache]`; which `cache.*` keys `init --devdrive` writes. |
-| `C14` | Defender exclusion: suggest vs required | S0-T18, S0-T20 | Whether `init` only prints the exclusion command or must configure it; severity of the `doctor` Defender check (the check is not merged before the decision). |
-| `U-API-1` | SQLite file name/location under `state_dir`; `config.toml` location; lead token storage | S0-T05, S0-T08, S0-T18, S0-T20 | `config.Locate()` and the store path resolver. Code takes explicit paths (injected through `cli.Deps`) until decided. |
-| `U-DATA-2` | Prefixes for prefixed ULIDs | S0-T06, S0-T08 | The prefix table in `internal/domain/ids.go`. |
-| `U-DATA-1` | Columns of `events`, `outbox`, `event_deliveries`; where `op_id` is stored | S0-T08 | Nothing in S0: `WithTx` takes an `opID` parameter but does not persist it yet (Sprint 2, `S2-E2`). |
-| `U-PLAT-5` | Auto-attach of the VHDX at boot: scheduled task vs service (§6.4 step 5) | S0-T17 | The whole real implementation of auto-attach. Interface + fake only. |
-| `U-PLAT-6` | `CTRL_BREAK` cancellation when running as a Windows service (no console) | S0-T13 | Nothing in S0 (no service until `S4-E9`); the deadline → `TerminateJobObject` path covers it. |
-| `U-PLAT-8` | Hermetic harness "Git repo on tmpfs" on Windows/macOS | S0-T21 | Default repo location on Windows/macOS (an option with `t.TempDir()` until decided). |
-| `U-PLAT-4` | Same-volume requirement between `golden_root` and `workspace.root` | S0-T18 | Nothing in S0 beyond C7; note for Sprint 1. |
-| `U-API-11` | Which §22 values are defaults vs examples | S0-T04, S0-T18 | Defaults beyond the ones the spec states explicitly; the Dev Drive sub-directory layout written by `init` (`X:/ws`, `X:/cache/...`). |
-| `U-API-6`, `U-API-10` | Default role of `cowflow mcp` without `--role`; `init --provider` omits `container` | S0-T02 | Only the stub's flag default and help text. |
-| `U-API-12` | Exit codes for cases §14 does not classify: `doctor` with failing checks, a not-yet-implemented command stub, an unclassified internal error, UAC elevation declined | S0-T01, S0-T02, S0-T18, S0-T20 | The `exit*` variables (`exitDoctorFailed`, `exitNotImplemented`, UAC declined); `AG-LEAD` sets the values at kickoff. |
-| `U-PLAT-9` | Flags of `devdrive create\|attach\|detach\|status`; defaults of `init --devdrive`'s `--path` and `--letter`; form of the "mount point under `C:\cf\`" (§6.4 step 4). Working proposal to confirm: the `devdrive` subcommands read `[devdrive]` (`path`, `mount`, `size_gb`) from config. | S0-T16, S0-T18 | Flag defaults (both flags required until decided); the `C:\cf\` mount form; `devdrive create` flags. |
-| `U-PLAT-10` | Where §6.4 step 5 "registers it in the project state" lives: `[devdrive]` in `config.toml`, a SQLite row, or both | S0-T08, S0-T18 | Dev Drive columns in S0-T08; the registration step of S0-T18. |
-| `U-API-13` | The bootstrap `version` subcommand is not in §14. Keep it, or keep only `--version`? | S0-T01, S0-T02 | The `version` subcommand (only `--version` until decided). |
+| ~~`C3`~~ | Resolved: `manual\|auto`; `pr` rejected, open question 7 (SCOPE.md §23 decision 14) | S0-T04 | Nothing. |
+| ~~`C4`~~ | Resolved: `squash` (SCOPE.md §23 decision 15) | S0-T02, S0-T04 | Nothing. |
+| ~~`C5`~~ | Resolved: `max_integrations_per_target` only (SCOPE.md §23 decision 16) | S0-T03 | Nothing. |
+| ~~`C6`~~ | Resolved: `github.com/deverity/cowflow/cmd` (SCOPE.md §23 decision 17) | S0-T05 | Nothing. |
+| ~~`C7`~~ | Resolved: `golden_root` optional, `<golden_root>/<sha>` (SCOPE.md §23 decision 18) | S0-T03, S0-T18 | Nothing. |
+| ~~`C9`~~ | Resolved: `[collaboration.escalation_after_minutes]` table (SCOPE.md §23 decision 19) | S0-T03 | Nothing. |
+| ~~`C10`~~ | Resolved: `message` rejected, Aider uses `--message` with `arg` (SCOPE.md §23 decision 20) | S0-T04 | Nothing. |
+| ~~`C11`~~ | Resolved: §15.3 block canonical (SCOPE.md §23 decision 21) | S0-T05 | Nothing. |
+| ~~`C12`~~ | Resolved: two lists; `blocked_patterns` default set (SCOPE.md §23 decision 22) | S0-T04 | Nothing. |
+| ~~`C13`~~ | Resolved: six `[cache]` keys (SCOPE.md §23 decision 23) | S0-T03, S0-T18 | Nothing. |
+| ~~`C14`~~ | Resolved: suggested only; `defender.exclusion` ok/warn/skip (SCOPE.md §23 decision 24) | S0-T18, S0-T20 | Nothing. |
+| ~~`U-API-1`~~ | Resolved: `.cowflow/config.toml`, `config.Locate()`, `<state_dir>/cowflow.db` (SCOPE.md §23 decision 25) | S0-T05, S0-T08, S0-T18, S0-T20 | Nothing. |
+| ~~`U-DATA-2`~~ | Resolved: prefix table (SCOPE.md §23 decision 37) | S0-T06, S0-T08 | Nothing. |
+| `U-DATA-1` | Deferred to Sprint 2 (`S2-E2`); stays open in SPEC-GAPS.md | S0-T08 | Nothing in S0: `WithTx` takes an `opID` parameter but does not persist it yet (Sprint 2, `S2-E2`). |
+| ~~`U-PLAT-5`~~ | Resolved: Task Scheduler task at logon (SCOPE.md §23 decision 32) | S0-T17 | Nothing. |
+| `U-PLAT-6` | Deferred to Sprint 4 (`S4-E9`); interim rule in SCOPE.md §23 decision 33 | S0-T13 | Nothing in S0 (no service until `S4-E9`); the deadline → `TerminateJobObject` path covers it. |
+| ~~`U-PLAT-8`~~ | Resolved: tmpfs on Linux only (SCOPE.md §23 decision 34) | S0-T21 | Nothing. |
+| ~~`U-PLAT-4`~~ | Resolved: same volume required (SCOPE.md §23 decision 31) | S0-T18 | Nothing. |
+| ~~`U-API-11`~~ | Resolved: §22 is the defaults file (SCOPE.md §23 decision 28) | S0-T04, S0-T18 | Nothing. |
+| ~~`U-API-6`~~, ~~`U-API-10`~~ | Resolved: no `--role` default; `--provider` exactly four values (SCOPE.md §23 decisions 26, 27) | S0-T02 | Nothing. |
+| ~~`U-API-12`~~ | Resolved: exit-code rule (SCOPE.md §23 decision 29) | S0-T01, S0-T02, S0-T18, S0-T20 | Nothing. |
+| `U-PLAT-9` | Resolved except the `C:\cf\` mount-point form, which is open question 8 (SCOPE.md §23 decision 35) | S0-T16, S0-T18 | Nothing. |
+| ~~`U-PLAT-10`~~ | Resolved: `[devdrive]` in config only (SCOPE.md §23 decision 36) | S0-T08, S0-T18 | Nothing. |
+| ~~`U-API-13`~~ | Resolved: `--version` only (SCOPE.md §23 decision 30) | S0-T01, S0-T02 | Nothing. |
 
 ---
 
