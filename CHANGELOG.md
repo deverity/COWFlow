@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/store`: `SetWorkspaceState` records the provider, COW kind,
+  filesystem and path the manager finally selected when a `pending_mount`
+  workspace moves to `creating`, in the same transaction as the audit row; it
+  refuses them on any other transition. `ResetStaleGoldenInUse` zeroes the
+  `in_use` count of golden trees not used since a cutoff, for `golden gc`.
 - `internal/workspace` (Windows): the block-clone primitive for `cow_clone`.
   It clones a file with `FSCTL_DUPLICATE_EXTENTS_TO_FILE` in cluster-aligned
   chunks below 4 GiB, after matching the sparse and integrity-stream settings,

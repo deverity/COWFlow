@@ -100,10 +100,20 @@ type StateAudit struct {
 
 // StateChange carries what SetWorkspaceState writes together with the new
 // state, in one transaction.
+//
+// Provider, CowKind, Filesystem and Path record what the manager finally
+// selected when a pending_mount row is retried. They are applied only on the
+// pending_mount -> creating transition, where a non-empty field replaces the
+// stored value and an empty one keeps it. On any other transition setting one
+// is an error.
 type StateChange struct {
-	LastError string // stored as last_error; empty clears it
-	Event     *WorkspaceEvent
-	Audit     *StateAudit
+	LastError  string // stored as last_error; empty clears it
+	Provider   string // selected provider (pending_mount -> creating only)
+	CowKind    string // selected COW kind (pending_mount -> creating only)
+	Filesystem string // filesystem of the final location (pending_mount -> creating only)
+	Path       string // canonicalized workspace path (pending_mount -> creating only)
+	Event      *WorkspaceEvent
+	Audit      *StateAudit
 }
 
 // GoldenState is the state of a golden_trees row (U-PLAT-13).

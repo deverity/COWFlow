@@ -187,7 +187,11 @@ type auditDetail struct {
 
 // SetWorkspaceState moves a workspace to state "to" (U-DATA-5 transitions)
 // and, in the same transaction, records c.LastError, the audit_log row when
-// c.Audit is set and the event when c.Event is set. Moving a destroyed
+// c.Audit is set and the event when c.Event is set. On the pending_mount ->
+// creating transition the non-empty c.Provider, c.CowKind, c.Filesystem and
+// c.Path replace the stored values, so the row records what the manager
+// finally selected; on any other transition setting one is refused with
+// ErrInvalidTransition. Moving a destroyed
 // workspace to destroyed again is a no-op that writes nothing.
 func (s *Store) SetWorkspaceState(ctx context.Context, id string, to domain.WorkspaceState, c domain.StateChange) error {
 	if !to.Valid() {
@@ -200,6 +204,7 @@ func (s *Store) SetWorkspaceState(ctx context.Context, id string, to domain.Work
 		c.Event.Type != domain.EventWorkspacePendingMount {
 		return fmt.Errorf("store: set workspace state: event type %q is not a workspace event", c.Event.Type)
 	}
+	selection := c.Provider != "" || c.CowKind != "" || c.Filesystem != "" || c.Path != ""
 	return s.WithTx(ctx, "", func(tx *Tx) error {
 		cur, err := scanWorkspace(tx.tx.QueryRowContext(ctx,
 			"SELECT "+workspaceCols+" FROM workspaces WHERE id = ?", id))
@@ -215,10 +220,19 @@ func (s *Store) SetWorkspaceState(ctx context.Context, id string, to domain.Work
 		if !transitionAllowed(cur.State, to) {
 			return fmt.Errorf("%w: workspace %s: %s -> %s", ErrInvalidTransition, id, cur.State, to)
 		}
+		retry := cur.State == domain.WorkspacePendingMount && to == domain.WorkspaceCreating
+		if selection && !retry {
+			return fmt.Errorf("%w: workspace %s: provider selection is only recorded on pending_mount -> creating, not %s -> %s",
+				ErrInvalidTransition, id, cur.State, to)
+		}
 		now := s.clock.Now().UTC()
+		// An empty selection field keeps the stored value.
 		if _, err := tx.tx.ExecContext(ctx,
-			"UPDATE workspaces SET state = ?, last_error = ?, updated_at = ? WHERE id = ?",
-			string(to), c.LastError, formatTime(now), id); err != nil {
+			`UPDATE workspaces SET state = ?, last_error = ?, updated_at = ?,
+			   provider = COALESCE(NULLIF(?, ''), provider), cow_kind = COALESCE(NULLIF(?, ''), cow_kind),
+			   filesystem = COALESCE(NULLIF(?, ''), filesystem), path = COALESCE(NULLIF(?, ''), path)
+			 WHERE id = ?`,
+			string(to), c.LastError, formatTime(now), c.Provider, c.CowKind, c.Filesystem, c.Path, id); err != nil {
 			return fmt.Errorf("store: update workspace state: %w", err)
 		}
 		if c.Audit != nil {

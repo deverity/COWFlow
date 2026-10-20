@@ -249,3 +249,36 @@ func (s *Store) DeleteGolden(ctx context.Context, projectID, sha string) error {
 		return nil
 	})
 }
+
+// ResetStaleGoldenInUse sets in_use to 0 on the golden trees of the project
+// whose last_used_at is older than cutoff and whose in_use is above zero, and
+// returns their base SHAs in order. It recovers references leaked by crashed
+// processes before `golden gc` runs (U-PLAT-13: a count with no recent use is
+// stale). A tree used at or after cutoff keeps its count.
+func (s *Store) ResetStaleGoldenInUse(ctx context.Context, projectID string, cutoff time.Time) ([]string, error) {
+	var shas []string
+	err := s.WithTx(ctx, "", func(tx *Tx) error {
+		rows, err := tx.tx.QueryContext(ctx,
+			`UPDATE golden_trees SET in_use = 0, updated_at = ?
+			 WHERE project_id = ? AND in_use > 0 AND last_used_at < ?
+			 RETURNING base_sha`,
+			formatTime(s.clock.Now()), projectID, formatTime(cutoff))
+		if err != nil {
+			return fmt.Errorf("store: reset stale golden references: %w", err)
+		}
+		defer func() { _ = rows.Close() }() // the rows error below is what matters
+		for rows.Next() {
+			var sha string
+			if err := rows.Scan(&sha); err != nil {
+				return fmt.Errorf("store: scan golden base sha: %w", err)
+			}
+			shas = append(shas, sha)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	slices.Sort(shas)
+	return shas, nil
+}
