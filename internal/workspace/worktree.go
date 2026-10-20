@@ -29,6 +29,7 @@ type WorktreeProvider struct {
 	git  GitOps
 	vols Volumes
 	goos string // runtime.GOOS; a field so the Windows config is testable anywhere
+	insp *Inspector
 }
 
 var _ WorkspaceProvider = (*WorktreeProvider)(nil)
@@ -107,9 +108,17 @@ func (p *WorktreeProvider) Create(ctx context.Context, spec WorkspaceSpec) (_ *W
 	}, nil
 }
 
-// Inspect is not implemented until the shared inspect (S1-T13) lands.
-func (*WorktreeProvider) Inspect(context.Context, string) (*WorkspaceStatus, error) {
-	return nil, errors.ErrUnsupported
+// WithInspector sets the shared [Inspector] Inspect delegates to and returns
+// p. Without one, Inspect fails with a configuration error.
+func (p *WorktreeProvider) WithInspector(in *Inspector) *WorktreeProvider {
+	p.insp = in
+	return p
+}
+
+// Inspect reports the workspace through the shared [Inspector]; this
+// provider never delivers copy-on-write, so the kind is always none.
+func (p *WorktreeProvider) Inspect(ctx context.Context, id string) (*WorkspaceStatus, error) {
+	return p.insp.Inspect(ctx, WorktreeName, CowNone, id)
 }
 
 // Destroy is not implemented until the shared destroy (S1-T14) lands.

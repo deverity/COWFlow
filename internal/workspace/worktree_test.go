@@ -171,11 +171,9 @@ func TestWorktreeCreateExistingPathUntouched(t *testing.T) {
 	assert.FileExists(t, keep)
 }
 
-func TestWorktreeInspectDestroyUnsupportedForNow(t *testing.T) {
+func TestWorktreeDestroyUnsupportedForNow(t *testing.T) {
 	t.Parallel()
 	p := workspace.NewWorktreeProvider(&workspacetest.FakeGit{}, nil)
-	_, err := p.Inspect(context.Background(), "wks_x")
-	assert.True(t, errors.Is(err, errors.ErrUnsupported))
 	assert.True(t, errors.Is(p.Destroy(context.Background(), "wks_x", workspace.DestroyOptions{}), errors.ErrUnsupported))
 }
 

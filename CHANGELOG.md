@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/workspace`: dirty detection and the shared inspect. `Dirty` reads
+  Git now and lists uncommitted paths (ignored files and `.env.cowflow` are not
+  counted) and commits not under the shared ref namespace; any Git failure is
+  an error, never "clean". `inspect` probes the filesystem at call time, adds
+  warnings for a changed filesystem or a missing path, reports `logs_dir`, and
+  gives `pending_mount` with `ErrPendingMount` when the volume is not mounted.
 - `internal/store`: `SetWorkspaceState` records the provider, COW kind,
   filesystem and path the manager finally selected when a `pending_mount`
   workspace moves to `creating`, in the same transaction as the audit row; it

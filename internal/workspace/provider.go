@@ -110,6 +110,7 @@ type WorkspaceStatus struct {
 	CowKind    CowKind // what this provider delivers
 	Head       string
 	Dirty      DirtyReport
+	LogsDir    string   // <daemon.state_dir>/logs/<workspace_id> (§23 decision 42)
 	Warnings   []string // e.g. filesystem differs from the one recorded at create
 }
 

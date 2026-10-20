@@ -206,7 +206,11 @@ func (m *Manager) Inspect(ctx context.Context, id string) (*WorkspaceStatus, err
 		if r.LastError != "" {
 			warn += ": " + r.LastError
 		}
-		return &WorkspaceStatus{Workspace: w, CowKind: w.Caps.CopyOnWrite, Warnings: []string{warn}}, nil
+		st := &WorkspaceStatus{Workspace: w, CowKind: w.Caps.CopyOnWrite, Warnings: []string{warn}}
+		if m.cfg.Daemon.StateDir != "" {
+			st.LogsDir = LogsDir(m.cfg.Daemon.StateDir, id)
+		}
+		return st, nil
 	}
 	p := m.providerByName(r.Provider)
 	if p == nil {
