@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -98,9 +99,10 @@ func cloneFile(ctx context.Context, src, dst string) (err error) {
 	return nil
 }
 
-// duplicateFile makes the empty file d a block clone of s: it matches the
-// sparse and integrity-stream settings (the IOCTL fails with
-// ERROR_INVALID_PARAMETER when they differ), sets the size, duplicates the
+// duplicateFile makes the empty file d a block clone of s: it makes d
+// sparse and matches the integrity-stream settings (the IOCTL fails with
+// ERROR_INVALID_PARAMETER when src is sparse and d is not, or when the
+// integrity settings differ), sets the size, duplicates the
 // extents in cluster-aligned chunks below 4 GiB, and copies the timestamps.
 // A zero-byte file only gets its timestamps.
 func duplicateFile(ctx context.Context, src string, s, d *os.File) error {
@@ -114,7 +116,7 @@ func duplicateFile(ctx context.Context, src string, s, d *os.File) error {
 	}
 	size := int64(info.FileSizeHigh)<<32 | int64(info.FileSizeLow)
 	if size > 0 {
-		if err := cloneData(ctx, src, sh, dh, &info, size, d); err != nil {
+		if err := cloneData(ctx, src, sh, dh, size, d); err != nil {
 			return err
 		}
 	}
@@ -127,23 +129,28 @@ func duplicateFile(ctx context.Context, src string, s, d *os.File) error {
 // cloneData matches the integrity settings, sets the size and duplicates
 // the extents of a non-empty file, checking ctx between chunks.
 //
-// dst is made sparse before its size is set, whatever src is. Extending the
-// end of file of a non-sparse file allocates its clusters; the duplicated
-// extents then replace them and ReFS frees the originals in the background,
-// so a 1 GiB clone transiently cost 1 GiB of free space (and failed on a
-// volume without that much free) although it shares every cluster. A sparse
-// dst allocates nothing when it grows. The IOCTL only requires dst to be
-// sparse when src is; a dst cloned from a non-sparse src gets the attribute
-// cleared again once every cluster is mapped, which allocates nothing.
-func cloneData(ctx context.Context, src string, sh, dh windows.Handle,
-	info *windows.ByHandleFileInformation, size int64, d *os.File) error {
+// dst is made sparse before its size is set, whatever src is, and stays
+// sparse. Extending the end of file of a non-sparse file allocates its
+// clusters; the duplicated extents then replace them and ReFS frees the
+// originals in the background, so a 1 GiB clone transiently cost 1 GiB of
+// free space (and failed on a volume without that much free) although it
+// shares every cluster. A sparse dst allocates nothing when it grows. The
+// IOCTL only requires dst to be sparse when src is, so a sparse dst is
+// allowed for every src. The attribute is not cleared afterwards. With a
+// final FSCTL_SET_SPARSE(FALSE) a 1 GiB clone on ReFS still lowered free
+// space by 247 MiB; clearing is the one remaining step that may allocate
+// (whatever the filesystem counts as holes), and a file whose every cluster
+// is mapped reads, writes and copies on write the same with or without it.
+func cloneData(ctx context.Context, src string, sh, dh windows.Handle, size int64, d *os.File) error {
 	if err := ioctl(dh, windows.FSCTL_SET_SPARSE, nil, 0, nil, 0); err != nil {
 		return mapCloneErr(src, "set sparse", err)
 	}
+	tracePhase(dh, "set sparse")
 	cluster, err := copyIntegrity(sh, dh)
 	if err != nil {
 		return mapCloneErr(src, "integrity information", err)
 	}
+	tracePhase(dh, "integrity (cluster %d)", cluster)
 	if cluster == 0 {
 		return fmt.Errorf("clone %s: %w: volume reports no cluster size", src, ErrCloneUnsupported)
 	}
@@ -154,7 +161,8 @@ func cloneData(ctx context.Context, src string, sh, dh windows.Handle,
 	if err := d.Truncate(size); err != nil {
 		return fmt.Errorf("clone %s: %w", src, err)
 	}
-	for _, e := range extents {
+	tracePhase(dh, "set size %d", size)
+	for i, e := range extents {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("clone %s: %w", src, err)
 		}
@@ -168,23 +176,22 @@ func cloneData(ctx context.Context, src string, sh, dh windows.Handle,
 			unsafe.Pointer(&in), uint32(unsafe.Sizeof(in)), nil, 0); err != nil { //nolint:gosec // G103: fixed-size ioctl input buffer
 			return mapCloneErr(src, "duplicate extents", err)
 		}
-	}
-	if info.FileAttributes&windows.FILE_ATTRIBUTE_SPARSE_FILE == 0 {
-		// Not mapped through mapCloneErr: the clone itself succeeded, so a
-		// failure here is never "unsupported".
-		unset := fileSetSparseBuffer{SetSparse: 0}
-		if err := ioctl(dh, windows.FSCTL_SET_SPARSE,
-			unsafe.Pointer(&unset), uint32(unsafe.Sizeof(unset)), nil, 0); err != nil { //nolint:gosec // G103: fixed-size ioctl input buffer
-			return fmt.Errorf("clone %s: clear sparse: %w", src, err)
-		}
+		tracePhase(dh, "duplicate %d/%d (offset %d, length %d)", i+1, len(extents), e.Offset, e.Length)
 	}
 	return nil
 }
 
-// fileSetSparseBuffer mirrors FILE_SET_SPARSE_BUFFER, the optional input of
-// FSCTL_SET_SPARSE: one BOOLEAN; no input means "set". Layout: 1 byte.
-type fileSetSparseBuffer struct {
-	SetSparse byte
+// cloneTrace, when a test stores a function in it, is called with the
+// destination handle after each step of cloneData, so a test can measure
+// what each step costs. It is empty in production.
+var cloneTrace atomic.Pointer[func(phase string, dst windows.Handle)]
+
+// tracePhase reports a finished cloneData step to cloneTrace; the phase is
+// only formatted when a test listens.
+func tracePhase(dst windows.Handle, format string, args ...any) {
+	if f := cloneTrace.Load(); f != nil {
+		(*f)(fmt.Sprintf(format, args...), dst)
+	}
 }
 
 // copyIntegrity gives dst the integrity-stream settings of src and returns

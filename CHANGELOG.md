@@ -344,8 +344,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allocates the destination's full size before sharing the source's clusters.
   Growing a non-sparse file allocated its clusters, which ReFS freed only
   later, so cloning briefly cost the file's size in free space and could fail
-  on a nearly full volume. The destination is grown as a sparse file and the
-  attribute is cleared again for a non-sparse source.
+  on a nearly full volume. The destination is grown as a sparse file and
+  stays sparse, also for a non-sparse source: with the attribute cleared
+  again afterwards, the step that can allocate, a 1 GiB clone still lowered
+  free space on ReFS by 247 MiB.
 
 ### Changed
 
