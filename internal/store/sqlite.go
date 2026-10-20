@@ -34,6 +34,7 @@ type Store struct {
 	clock domain.Clock
 	ids   domain.IDGen
 	sink  EventSink
+	busy  time.Duration // busy_timeout; also bounds BEGIN retries
 }
 
 // dsn builds the driver DSN. Pragmas go in the DSN so that every pooled
@@ -77,7 +78,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if opt.Events == nil {
 		opt.Events = logSink{}
 	}
-	s := &Store{db: db, clock: opt.Clock, ids: opt.IDs, sink: opt.Events}
+	s := &Store{db: db, clock: opt.Clock, ids: opt.IDs, sink: opt.Events, busy: opt.BusyTimeout}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close() // the migration error is the one that matters
 		return nil, err

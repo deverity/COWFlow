@@ -199,6 +199,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file as `.bak`. `config.Locate` reports the undecided location instead of
   guessing one.
 
+### Fixed
+
+- `internal/store`: `WithTx` retries `BEGIN IMMEDIATE` on `SQLITE_BUSY` for up
+  to another busy timeout, so heavy writer contention no longer surfaces
+  `database is locked` to callers (seen on slow Windows CI runners).
+
 ### Changed
 
 - Go 1.26 is now required (`go 1.26.0`, built with the `go1.26.9`
