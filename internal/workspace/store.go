@@ -32,5 +32,13 @@ type Store interface {
 	ResetStaleGoldenInUse(ctx context.Context, projectID string, cutoff time.Time) ([]string, error)
 
 	CreateTask(ctx context.Context, t domain.Task) (domain.Task, error) // minimal; S2-E1 extends
+	// DeleteTask removes the task and its failed workspace rows. It refuses
+	// with store.ErrTaskHasWorkspaces while any other workspace row exists
+	// (destroyed rows included) and returns store.ErrNotFound for an unknown
+	// task of the project.
+	DeleteTask(ctx context.Context, projectID, taskID string) error
+	// UpdateWorkspaceSparsePaths replaces the sparse paths of a ready
+	// workspace with the complete, normalized set (Manager.ExpandScope).
+	UpdateWorkspaceSparsePaths(ctx context.Context, workspaceID string, paths []string) error
 	GetTaskBySlug(ctx context.Context, projectID, slug string) (domain.Task, error)
 }

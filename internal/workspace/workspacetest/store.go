@@ -507,3 +507,73 @@ func (s *MemStore) GetTaskBySlug(ctx context.Context, projectID, slug string) (d
 	t.Paths = slices.Clone(t.Paths)
 	return t, nil
 }
+
+// DeleteTask removes the task and its failed workspace rows. A task with a
+// workspace row in any other state, destroyed included, is refused with
+// store.ErrTaskHasWorkspaces and nothing changes; an unknown task of the
+// project is store.ErrNotFound.
+func (s *MemStore) DeleteTask(ctx context.Context, projectID, taskID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := s.lock("DeleteTask")
+	defer s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	var key taskKey
+	found := false
+	for k, t := range s.tasks {
+		if t.ID == taskID && t.ProjectID == projectID {
+			key, found = k, true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("%w: task %q", store.ErrNotFound, taskID)
+	}
+	blocking := 0
+	for _, r := range s.workspaces {
+		if r.TaskID == taskID && r.State != domain.WorkspaceFailed {
+			blocking++
+		}
+	}
+	if blocking > 0 {
+		return fmt.Errorf("%w: task %s has %d workspace(s) that are not failed", store.ErrTaskHasWorkspaces, taskID, blocking)
+	}
+	for id, r := range s.workspaces {
+		if r.TaskID == taskID {
+			delete(s.workspaces, id)
+		}
+	}
+	delete(s.tasks, key)
+	return nil
+}
+
+// UpdateWorkspaceSparsePaths replaces the sparse paths of a ready workspace;
+// nil is stored as an empty list. A missing workspace is store.ErrNotFound;
+// any other state is store.ErrInvalidTransition and keeps the stored paths.
+func (s *MemStore) UpdateWorkspaceSparsePaths(ctx context.Context, workspaceID string, paths []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := s.lock("UpdateWorkspaceSparsePaths")
+	defer s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	r, ok := s.workspaces[workspaceID]
+	if !ok {
+		return fmt.Errorf("%w: workspace %q", store.ErrNotFound, workspaceID)
+	}
+	if r.State != domain.WorkspaceReady {
+		return fmt.Errorf("%w: workspace %s is %s, sparse paths change only when ready", store.ErrInvalidTransition, workspaceID, r.State)
+	}
+	r.SparsePaths = slices.Clone(paths)
+	if r.SparsePaths == nil {
+		r.SparsePaths = []string{}
+	}
+	r.UpdatedAt = s.now()
+	s.workspaces[workspaceID] = r
+	return nil
+}
