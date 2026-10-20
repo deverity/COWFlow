@@ -218,6 +218,11 @@ func (c *scriptCloner) Calls() int {
 	return c.calls
 }
 
+// fsRoot is the root of the file system holding t.TempDir(): "/" on Unix,
+// the drive root ("C:\") on Windows, where "/" cleans to `\` and contains
+// no drive-letter path. A fake volume mounted there holds every temp dir.
+var fsRoot = filepath.VolumeName(os.TempDir()) + string(filepath.Separator)
+
 func capsProvider(t *testing.T, vols workspace.Volumes, cl workspace.Cloner) (*workspace.CowCloneProvider, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -244,7 +249,7 @@ func (s stubGolden) Acquire(context.Context, string, string, string) (workspace.
 
 func TestCowCloneCapabilitiesBlockAfterProbe(t *testing.T) {
 	cl := &workspacetest.FakeCloner{}
-	vols := workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "refs", ID: "v", MountPath: "/"})
+	vols := workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "refs", ID: "v", MountPath: fsRoot})
 	p, root := capsProvider(t, vols, cl)
 
 	caps, err := p.Capabilities(context.Background(), root)
@@ -262,7 +267,7 @@ func TestCowCloneCapabilitiesBlockAfterProbe(t *testing.T) {
 
 func TestCowCloneCapabilitiesNoneWhenCloneUnsupported(t *testing.T) {
 	cl := &scriptCloner{err: fmt.Errorf("probe: %w", workspace.ErrCloneUnsupported)}
-	vols := workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "ntfs", ID: "v", MountPath: "/"})
+	vols := workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "ntfs", ID: "v", MountPath: fsRoot})
 	p, root := capsProvider(t, vols, cl)
 
 	caps, err := p.Capabilities(context.Background(), root)
@@ -296,7 +301,7 @@ func TestCowCloneCapabilitiesNoneOnOtherVolume(t *testing.T) {
 
 func TestCowCloneCapabilitiesProbeErrorNotCached(t *testing.T) {
 	cl := &scriptCloner{err: syscall.EIO}
-	vols := workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "refs", ID: "v", MountPath: "/"})
+	vols := workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "refs", ID: "v", MountPath: fsRoot})
 	p, root := capsProvider(t, vols, cl)
 
 	_, err := p.Capabilities(context.Background(), root)
@@ -313,7 +318,7 @@ func TestCowCloneCreateWithoutBlockClone(t *testing.T) {
 	cfg.Workspace.Root = root
 	p := workspace.NewCowCloneProvider(workspace.CowCloneDeps{
 		Config: cfg, Git: g, Golden: stubGolden{err: errors.New("must not be acquired")},
-		Volumes: workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "ext4", ID: "v", MountPath: "/"}),
+		Volumes: workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "ext4", ID: "v", MountPath: fsRoot}),
 		Cloner:  &scriptCloner{err: workspace.ErrCloneUnsupported},
 		Logger:  slog.New(slog.DiscardHandler),
 	})
@@ -464,14 +469,25 @@ func TestCowCloneSymlinkReplicated(t *testing.T) {
 		}
 	}
 	f := newCCFixture(t, false, nil, nil)
+	if runtime.GOOS == "windows" {
+		// git init on Windows records core.symlinks=false, so the golden
+		// checkout would write the link as a plain file holding its target
+		// and there would be no symlink to replicate. The probe above
+		// showed this machine can create symlinks.
+		f.git(t, f.repo.Dir, "config", "core.symlinks", "true")
+	}
 	require.NoError(t, os.Symlink("cmd/app/main.go", filepath.Join(f.repo.Dir, "link-to-main")))
 	f.sha = f.repo.Commit(t, "feat: add a symlink", nil)
 
 	w, err := f.prov.Create(context.Background(), f.spec("links"))
 	require.NoError(t, err)
+	fi, err := os.Lstat(filepath.Join(w.Path, "link-to-main"))
+	require.NoError(t, err)
+	require.NotZero(t, fi.Mode()&fs.ModeSymlink, "replicated as a symlink, not followed: %v", fi.Mode())
 	target, err := os.Readlink(filepath.Join(w.Path, "link-to-main"))
 	require.NoError(t, err)
-	assert.Equal(t, "cmd/app/main.go", target, "replicated as a symlink, not followed")
+	// Windows stores link targets with backslashes.
+	assert.Equal(t, "cmd/app/main.go", filepath.ToSlash(target), "replicated as a symlink, not followed")
 	assert.Empty(t, f.status(t, w.Path))
 }
 
@@ -614,7 +630,7 @@ func TestCowCloneGoldenErrorWritesNothing(t *testing.T) {
 	cfg.Workspace.Root = f.root
 	p := workspace.NewCowCloneProvider(workspace.CowCloneDeps{
 		Config: cfg, Git: f.git, Golden: stubGolden{err: syscall.ENOSPC},
-		Volumes: workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "apfs", ID: "v", MountPath: "/"}),
+		Volumes: workspacetest.NewFakeVolumes(platform.Volume{Filesystem: "apfs", ID: "v", MountPath: fsRoot}),
 		Cloner:  &workspacetest.FakeCloner{}, Logger: slog.New(slog.DiscardHandler),
 	})
 	_, err := p.Create(context.Background(), f.spec)
