@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   symlinks and directories, keep the permission bits and modification time,
   never copy bytes, and report `ErrCloneUnsupported` (ext4, XFS without
   reflink, another volume) without leaving a destination file.
+- `workspace.GoldenCache` (`Manager.Golden()`): golden trees per `base_sha`
+  at `<golden_root>/<sha>` (empty `golden_root`: `<workspace.root>/golden`),
+  with the index beside the tree at `<dir>.index`. `Acquire` builds each SHA
+  once across processes (store claim, stale takeover after
+  `command_timeout_seconds`), in `<dir>.tmp-<op_id>` on the workspace volume,
+  refreshes the index after a 1 s racy-clean wait, fails explicitly when the
+  export lost paths (case collisions), and renames into place, so a partial
+  tree is never visible. `GC` deletes ready trees least recently used first
+  down to a byte budget, never one in use or building, renames before
+  removal, retries `deleting` rows, and removes failed rows and leftover
+  temp paths. `List` serves `golden list`.
 - `internal/workspace` (Windows): the block-clone primitive for `cow_clone`.
   It clones a file with `FSCTL_DUPLICATE_EXTENTS_TO_FILE` in cluster-aligned
   chunks below 4 GiB, after matching the sparse and integrity-stream settings,
