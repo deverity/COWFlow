@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -91,7 +92,12 @@ func TestDirtyUncommittedKinds(t *testing.T) {
 		{"renamed", func(t *testing.T, f *dirtyFixture) { f.git(t, "mv", "a.txt", "b.txt") }, []string{"b.txt"}},
 		{"untracked in new directory", func(t *testing.T, f *dirtyFixture) { f.write(t, "d/e/f.txt", "x") }, []string{"d/e/f.txt"}},
 		{"space", func(t *testing.T, f *dirtyFixture) { f.write(t, "my file.txt", "x") }, []string{"my file.txt"}},
-		{"newline", func(t *testing.T, f *dirtyFixture) { f.write(t, "line\nbreak.txt", "x") }, []string{"line\nbreak.txt"}},
+		{"newline", func(t *testing.T, f *dirtyFixture) {
+			if runtime.GOOS == "windows" {
+				t.Skip("NTFS and ReFS refuse control characters such as a newline in file names")
+			}
+			f.write(t, "line\nbreak.txt", "x")
+		}, []string{"line\nbreak.txt"}},
 		{"unicode", func(t *testing.T, f *dirtyFixture) { f.write(t, "çãø/日本.txt", "x") }, []string{"çãø/日本.txt"}},
 	}
 	for _, tc := range tests {
