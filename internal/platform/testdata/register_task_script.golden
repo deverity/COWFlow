@@ -1,0 +1,11 @@
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$name = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('ZGV2ZHJpdmUtYXR0YWNoLTdlZGRlNDkyYjM3OQ=='))
+$exe = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('QzpcUHJvZ3JhbSBGaWxlc1xDT1dGbG93XGNvd2Zsb3cuZXhl'))
+$dir = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('Qzpcc3JjXGFwcA=='))
+$user = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('Q09SUFxhbGljZQ=='))
+$action = New-ScheduledTaskAction -Execute $exe -Argument 'devdrive attach' -WorkingDirectory $dir
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
+$principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskPath '\COWFlow\' -TaskName $name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null

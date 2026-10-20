@@ -1,0 +1,6 @@
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$name = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('ZGV2ZHJpdmUtYXR0YWNoLTdlZGRlNDkyYjM3OQ=='))
+if ($null -ne (Get-ScheduledTask -TaskPath '\COWFlow\' -TaskName $name -ErrorAction SilentlyContinue)) {
+  Unregister-ScheduledTask -TaskPath '\COWFlow\' -TaskName $name -Confirm:$false
+}

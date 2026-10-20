@@ -71,7 +71,7 @@ func TestScripts_NoUnencodedUserText(t *testing.T) {
 
 func TestScripts_Prelude(t *testing.T) {
 	for _, src := range []string{formatScript, mountScript, newVHDScript, mountVHDScript,
-		dismountVHDScript, vhdDiskScript} {
+		dismountVHDScript, vhdDiskScript, registerTaskScript, unregisterTaskScript} {
 		require.True(t, strings.HasPrefix(src, "$ErrorActionPreference = 'Stop'\n"))
 	}
 }

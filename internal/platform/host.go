@@ -63,8 +63,9 @@ type DevDrive interface {
 	Status(ctx context.Context, spec DevDriveSpec) (DevDriveStatus, error)
 }
 
-// AutoAttacher registers attach-at-boot (§6.4 step 5).
-// Mechanism pending SPEC-GAPS U-PLAT-5.
+// AutoAttacher registers attach-at-boot (§6.4 step 5): on Windows a Task
+// Scheduler task that runs `cowflow devdrive attach` at logon. Enable and
+// Disable are idempotent.
 type AutoAttacher interface {
 	Enable(ctx context.Context, spec DevDriveSpec) error
 	Disable(ctx context.Context, vhdxPath string) error

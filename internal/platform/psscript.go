@@ -14,7 +14,8 @@ import (
 
 // PowerShell scripts for the Dev Drive steps that have no Win32 API
 // (partition, format, mount) and for the Hyper-V fallback when virtdisk.dll
-// is unavailable (SCOPE.md §6.4). The scripts are fixed text. Values reach
+// is unavailable (SCOPE.md §6.4), and for the auto-attach scheduled task
+// (§6.4 step 5). The scripts are fixed text. Values reach
 // them only as an int, a uint64, or base64 of an already validated string,
 // so no user-provided text ever appears unencoded in PowerShell source
 // (SCOPE.md §7, §17). Rendering is OS-independent so it is tested
@@ -79,6 +80,35 @@ if ($v.Attached) { $v.DiskNumber } else { -1 }
 `
 )
 
+// The Dev Drive auto-attach scripts (SCOPE.md §6.4 step 5): one Task
+// Scheduler task per VHDX under the fixed folder \COWFlow\. Register uses
+// -Force, so registering again replaces the task; unregister removes the
+// task only when it exists. Both are therefore idempotent.
+const (
+	// registerTaskScript registers a task triggered at logon of the
+	// decoded user, running as that user with the highest privileges:
+	// Execute = the decoded cowflow.exe path, Argument = the fixed text
+	// "devdrive attach", WorkingDirectory = the decoded project root. The
+	// battery settings let the task start on a laptop running on battery
+	// (Task Scheduler's defaults would skip it).
+	registerTaskScript = psPrelude + `$name = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{.NameB64}}'))
+$exe = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{.ExeB64}}'))
+$dir = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{.DirB64}}'))
+$user = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{.UserB64}}'))
+$action = New-ScheduledTaskAction -Execute $exe -Argument 'devdrive attach' -WorkingDirectory $dir
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
+$principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskPath '\COWFlow\' -TaskName $name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+`
+	// unregisterTaskScript removes the decoded task when it exists.
+	unregisterTaskScript = psPrelude + `$name = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{.NameB64}}'))
+if ($null -ne (Get-ScheduledTask -TaskPath '\COWFlow\' -TaskName $name -ErrorAction SilentlyContinue)) {
+  Unregister-ScheduledTask -TaskPath '\COWFlow\' -TaskName $name -Confirm:$false
+}
+`
+)
+
 // scriptArgs are the only values a script template can see. Strings are
 // carried exclusively as base64.
 type scriptArgs struct {
@@ -86,6 +116,10 @@ type scriptArgs struct {
 	Size     uint64
 	MountB64 string
 	PathB64  string
+	NameB64  string
+	ExeB64   string
+	DirB64   string
+	UserB64  string
 }
 
 // b64 encodes s as base64 of its UTF-8 bytes; the alphabet contains no
@@ -121,6 +155,19 @@ func renderMountScript(n int, mount string) (string, error) {
 // already validated VHDX path and size.
 func renderPathScript(src, path string, size uint64) (string, error) {
 	return renderScript(src, scriptArgs{PathB64: b64(path), Size: size})
+}
+
+// renderRegisterTaskScript renders registerTaskScript for task name and an
+// already validated target.
+func renderRegisterTaskScript(name string, t AutoAttachTarget) (string, error) {
+	return renderScript(registerTaskScript, scriptArgs{
+		NameB64: b64(name), ExeB64: b64(t.Exe), DirB64: b64(t.WorkDir), UserB64: b64(t.User),
+	})
+}
+
+// renderUnregisterTaskScript renders unregisterTaskScript for task name.
+func renderUnregisterTaskScript(name string) (string, error) {
+	return renderScript(unregisterTaskScript, scriptArgs{NameB64: b64(name)})
 }
 
 // encodeCommand returns script in the form powershell.exe -EncodedCommand

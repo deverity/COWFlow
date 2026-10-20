@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `platform.AutoAttacher` seam with `NewAutoAttacher`: until the auto-attach
-  mechanism is decided (SPEC-GAPS U-PLAT-5), `Enable` returns
-  `ErrAutoAttachUndecided` on Windows and `ErrUnsupported` elsewhere.
+- Dev Drive auto-attach (`platform.NewAutoAttacher`, `NewAutoAttacherFor`):
+  on Windows `Enable` registers the Task Scheduler task
+  `\COWFlow\devdrive-attach-<hash of the VHDX path>`, which runs
+  `cowflow devdrive attach` from the project root at logon of the user who
+  ran init, with highest privileges; `Disable` removes it. Both are
+  idempotent. Other systems report `ErrUnsupported`.
 - `cowflow init --devdrive <size> --path <file.vhdx> --letter <X>` provisions
   an ReFS Dev Drive VHDX on Windows 11 22H2+, asking for administrator rights
   once (one UAC prompt), and records it under `[devdrive]` in the config file
